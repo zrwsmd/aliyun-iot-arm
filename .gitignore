@@ -1,0 +1,6 @@
+build/
+device_id.json
+
+# Common editor/system noise
+.DS_Store
+Thumbs.db

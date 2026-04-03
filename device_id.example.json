@@ -1,0 +1,18 @@
+{
+  "productKey": "yourProductKey",
+  "deviceName": "yourDeviceName",
+  "productSecret": "",
+  "deviceSecret": "yourDeviceSecret",
+  "instanceId": "yourInstanceId",
+  "region": "cn-shanghai",
+  "subDevice": [
+    {
+      "productKey": "",
+      "deviceName": ""
+    },
+    {
+      "productKey": "",
+      "deviceName": ""
+    }
+  ]
+}
