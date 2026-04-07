@@ -30,7 +30,7 @@ long long app_now_ms(void) {
     return (long long)tv.tv_sec * 1000LL + (long long)tv.tv_usec / 1000LL;
 }
 
-static int app_publish_topic(AppContext *app, const char *topic, const char *payload, uint8_t qos) {
+int app_publish_topic(AppContext *app, const char *topic, const char *payload, uint8_t qos) {
     int32_t res;
 
     if (app == NULL || app->mqtt_handle == NULL || topic == NULL || payload == NULL) {
@@ -49,7 +49,7 @@ static int app_publish_topic(AppContext *app, const char *topic, const char *pay
     return 0;
 }
 
-static int app_subscribe_topic(AppContext *app, const char *topic) {
+int app_subscribe_topic(AppContext *app, const char *topic) {
     int32_t res;
 
     pthread_mutex_lock(&app->mqtt_lock);
@@ -146,6 +146,7 @@ static void app_handle_property_set(AppContext *app, const char *request_id, con
     }
 
     (void)app_post_properties(app, params);
+    (void)device_shadow_manager_update_reported(&app->shadow_manager, params);
     (void)app_reply_service(app, "property/set", request_id, 200, "{}");
 }
 
@@ -309,7 +310,10 @@ static void app_mqtt_recv_handler(void *handle, const aiot_mqtt_recv_t *packet, 
 
             printf("mqtt pub topic=%s\n", topic);
             printf("mqtt pub payload=%s\n", payload);
-            app_dispatch_service(app, topic, payload);
+            if (!device_shadow_manager_handle_message(&app->shadow_manager, topic, payload) &&
+                !gateway_manager_handle_message(&app->gateway_manager, topic, payload)) {
+                app_dispatch_service(app, topic, payload);
+            }
 
             free(topic);
             free(payload);
@@ -372,6 +376,12 @@ static void *app_mqtt_recv_thread_main(void *arg) {
 }
 
 int app_init(AppContext *app, const char *config_path) {
+    int ide_initialized = 0;
+    int deploy_initialized = 0;
+    int start_initialized = 0;
+    int shadow_initialized = 0;
+    int gateway_initialized = 0;
+
     if (app == NULL || config_path == NULL) {
         return -1;
     }
@@ -394,15 +404,56 @@ int app_init(AppContext *app, const char *config_path) {
         return -1;
     }
 
-    if (ide_connection_manager_init(&app->ide_manager, app) != 0 ||
-        deploy_manager_init(&app->deploy_manager, app) != 0 ||
-        start_manager_init(&app->start_manager, app) != 0 ||
-        trace_simulator_init(&app->trace_simulator, app) != 0) {
+    if (ide_connection_manager_init(&app->ide_manager, app) != 0) {
         pthread_mutex_destroy(&app->mqtt_lock);
         return -1;
     }
+    ide_initialized = 1;
+
+    if (deploy_manager_init(&app->deploy_manager, app) != 0) {
+        goto init_failed;
+    }
+    deploy_initialized = 1;
+
+    if (start_manager_init(&app->start_manager, app) != 0) {
+        goto init_failed;
+    }
+    start_initialized = 1;
+
+    if (device_shadow_manager_init(&app->shadow_manager, app) != 0) {
+        goto init_failed;
+    }
+    shadow_initialized = 1;
+
+    if (gateway_manager_init(&app->gateway_manager, app) != 0) {
+        goto init_failed;
+    }
+    gateway_initialized = 1;
+
+    if (trace_simulator_init(&app->trace_simulator, app) != 0) {
+        goto init_failed;
+    }
 
     return 0;
+
+init_failed:
+    if (gateway_initialized) {
+        gateway_manager_cleanup(&app->gateway_manager);
+    }
+    if (shadow_initialized) {
+        device_shadow_manager_cleanup(&app->shadow_manager);
+    }
+    if (start_initialized) {
+        start_manager_cleanup(&app->start_manager);
+    }
+    if (deploy_initialized) {
+        deploy_manager_cleanup(&app->deploy_manager);
+    }
+    if (ide_initialized) {
+        ide_connection_manager_cleanup(&app->ide_manager);
+    }
+    pthread_mutex_destroy(&app->mqtt_lock);
+    return -1;
 }
 
 int app_start(AppContext *app) {
@@ -465,6 +516,13 @@ int app_start(AppContext *app) {
 
     ide_connection_manager_clear_cloud_state(&app->ide_manager);
     (void)app_post_properties(app, "{\"ADASSwitch\":0}");
+    (void)device_shadow_manager_update_reported(&app->shadow_manager, "{\"ADASSwitch\":0}");
+    if (device_shadow_manager_start(&app->shadow_manager) != 0) {
+        return -1;
+    }
+    if (gateway_manager_start(&app->gateway_manager) != 0) {
+        return -1;
+    }
     return 0;
 }
 
@@ -502,6 +560,8 @@ void app_shutdown(AppContext *app) {
     ide_connection_manager_cleanup(&app->ide_manager);
     deploy_manager_cleanup(&app->deploy_manager);
     start_manager_cleanup(&app->start_manager);
+    gateway_manager_cleanup(&app->gateway_manager);
+    device_shadow_manager_cleanup(&app->shadow_manager);
     pthread_mutex_destroy(&app->mqtt_lock);
 }
 

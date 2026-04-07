@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define DEVICE_CONFIG_ARRAY_BUFFER_SIZE 8192
+#define DEVICE_CONFIG_ITEM_BUFFER_SIZE 1024
+
 static char *device_config_read_file(const char *path) {
     FILE *file;
     char *buffer;
@@ -44,6 +47,57 @@ static char *device_config_read_file(const char *path) {
     return buffer;
 }
 
+static void device_config_load_sub_devices(const char *json, DeviceConfig *config) {
+    char array_json[DEVICE_CONFIG_ARRAY_BUFFER_SIZE];
+    int item_count;
+    int index;
+
+    if (json == NULL || config == NULL) {
+        return;
+    }
+
+    if (json_get_array(json, "subDevice", array_json, sizeof(array_json)) != 0) {
+        return;
+    }
+
+    item_count = json_array_size(array_json);
+    if (item_count <= 0) {
+        return;
+    }
+
+    for (index = 0; index < item_count; ++index) {
+        char item_json[DEVICE_CONFIG_ITEM_BUFFER_SIZE];
+        SubDeviceConfig sub_device;
+
+        if (config->sub_device_count >= DEVICE_CONFIG_MAX_SUB_DEVICES) {
+            fprintf(stderr, "subDevice count exceeds max %d, extra items ignored\n", DEVICE_CONFIG_MAX_SUB_DEVICES);
+            break;
+        }
+
+        if (json_array_get_item(array_json, (size_t)index, item_json, sizeof(item_json)) != 0) {
+            continue;
+        }
+
+        memset(&sub_device, 0, sizeof(sub_device));
+        if (json_get_string(item_json, "productKey", sub_device.product_key, sizeof(sub_device.product_key)) != 0 ||
+            json_get_string(item_json, "deviceName", sub_device.device_name, sizeof(sub_device.device_name)) != 0) {
+            continue;
+        }
+
+        if (sub_device.product_key[0] == '\0' || sub_device.device_name[0] == '\0') {
+            continue;
+        }
+
+        (void)json_get_string(item_json, "deviceSecret", sub_device.device_secret, sizeof(sub_device.device_secret));
+        if (json_get_string(item_json, "signMethod", sub_device.sign_method, sizeof(sub_device.sign_method)) != 0 ||
+            sub_device.sign_method[0] == '\0') {
+            snprintf(sub_device.sign_method, sizeof(sub_device.sign_method), "hmacsha256");
+        }
+
+        config->sub_devices[config->sub_device_count++] = sub_device;
+    }
+}
+
 int device_config_load(const char *path, DeviceConfig *config) {
     char *json;
     int rc = -1;
@@ -69,6 +123,7 @@ int device_config_load(const char *path, DeviceConfig *config) {
 
     (void)json_get_string(json, "instanceId", config->instance_id, sizeof(config->instance_id));
     (void)json_get_string(json, "region", config->region, sizeof(config->region));
+    device_config_load_sub_devices(json, config);
     rc = 0;
 
 cleanup:

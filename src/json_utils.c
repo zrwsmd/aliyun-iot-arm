@@ -222,6 +222,164 @@ int json_get_object(const char *json, const char *key, char *out, size_t out_siz
     return json_copy_trimmed(cursor, end + 1, out, out_size);
 }
 
+int json_get_array(const char *json, const char *key, char *out, size_t out_size) {
+    const char *cursor = json_find_after_key(json, key);
+    const char *end;
+
+    if (cursor == NULL || *cursor != '[') {
+        return -1;
+    }
+
+    end = json_find_compound_end(cursor, '[', ']');
+    if (end == NULL) {
+        return -1;
+    }
+
+    return json_copy_trimmed(cursor, end + 1, out, out_size);
+}
+
+int json_array_size(const char *array_json) {
+    const char *cursor;
+    int depth = 0;
+    int in_string = 0;
+    int escaped = 0;
+    int count = 0;
+    int has_item = 0;
+
+    if (array_json == NULL) {
+        return -1;
+    }
+
+    cursor = json_skip_ws(array_json);
+    if (cursor == NULL || *cursor != '[') {
+        return -1;
+    }
+
+    cursor = json_skip_ws(cursor + 1);
+    if (cursor == NULL || *cursor == '\0') {
+        return -1;
+    }
+    if (*cursor == ']') {
+        return 0;
+    }
+
+    while (*cursor != '\0') {
+        char ch = *cursor;
+
+        if (in_string) {
+            if (escaped) {
+                escaped = 0;
+            } else if (ch == '\\') {
+                escaped = 1;
+            } else if (ch == '"') {
+                in_string = 0;
+            }
+            cursor++;
+            continue;
+        }
+
+        if (isspace((unsigned char)ch)) {
+            cursor++;
+            continue;
+        }
+
+        if (ch == '"') {
+            in_string = 1;
+            has_item = 1;
+        } else if (ch == '{' || ch == '[') {
+            depth++;
+            has_item = 1;
+        } else if (ch == '}' || ch == ']') {
+            if (depth > 0) {
+                depth--;
+            } else if (ch == ']') {
+                if (has_item) {
+                    count++;
+                }
+                return count;
+            }
+        } else if (ch == ',' && depth == 0) {
+            if (has_item) {
+                count++;
+                has_item = 0;
+            }
+        } else {
+            has_item = 1;
+        }
+
+        cursor++;
+    }
+
+    return -1;
+}
+
+int json_array_get_item(const char *array_json, size_t index, char *out, size_t out_size) {
+    const char *cursor;
+    const char *item_start;
+    int depth = 0;
+    int in_string = 0;
+    int escaped = 0;
+    size_t current_index = 0;
+
+    if (array_json == NULL || out == NULL || out_size == 0) {
+        return -1;
+    }
+
+    cursor = json_skip_ws(array_json);
+    if (cursor == NULL || *cursor != '[') {
+        return -1;
+    }
+
+    cursor = json_skip_ws(cursor + 1);
+    if (cursor == NULL || *cursor == '\0' || *cursor == ']') {
+        return -1;
+    }
+
+    item_start = cursor;
+    while (*cursor != '\0') {
+        char ch = *cursor;
+
+        if (in_string) {
+            if (escaped) {
+                escaped = 0;
+            } else if (ch == '\\') {
+                escaped = 1;
+            } else if (ch == '"') {
+                in_string = 0;
+            }
+            cursor++;
+            continue;
+        }
+
+        if (ch == '"') {
+            in_string = 1;
+        } else if (ch == '{' || ch == '[') {
+            depth++;
+        } else if (ch == '}' || ch == ']') {
+            if (depth > 0) {
+                depth--;
+            } else if (ch == ']') {
+                if (current_index == index) {
+                    return json_copy_trimmed(item_start, cursor, out, out_size);
+                }
+                return -1;
+            }
+        } else if (ch == ',' && depth == 0) {
+            if (current_index == index) {
+                return json_copy_trimmed(item_start, cursor, out, out_size);
+            }
+            current_index++;
+            item_start = json_skip_ws(cursor + 1);
+            cursor++;
+            continue;
+        }
+
+        cursor++;
+    }
+
+    return -1;
+}
+
 int json_escape_string(const char *input, char *out, size_t out_size) {
     size_t idx = 0;
 

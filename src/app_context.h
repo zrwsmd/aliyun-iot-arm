@@ -8,6 +8,8 @@
 #include "aiot_mqtt_api.h"
 #include "device_config.h"
 #include "deploy_manager.h"
+#include "device_shadow_manager.h"
+#include "gateway_manager.h"
 #include "ide_connection_manager.h"
 #include "start_manager.h"
 #include "trace_simulator.h"
@@ -26,6 +28,8 @@ typedef struct AppContext {
     IdeConnectionManager ide_manager;
     DeployManager deploy_manager;
     StartManager start_manager;
+    DeviceShadowManager shadow_manager;
+    GatewayManager gateway_manager;
     TraceSimulator trace_simulator;
 } AppContext;
 

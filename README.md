@@ -6,6 +6,9 @@ What it currently includes:
 - MQTT device connect over TLS using `device_id.json`
 - Thing service handling for `requestConnect`, `requestDisconnect`, `ideHeartbeat`, `deployProject`, and `startProject`
 - Property handling for `property/set` and `property/get`
+- Device shadow sync: startup `get`, downstream `control`, and reported-state update
+- Gateway sub-device support: `subDevice` config parsing, topo query/report, topo add, and sub-device login
+- Sub-device property proxy handling for `property/set` and `property/get`
 - IDE connection lock state reporting with `hasIDEConnected`, `IDEInfo`, and `IDEHeartbeat`
 - Async deploy execution and project start execution
 
@@ -16,6 +19,8 @@ Current scope:
 Important:
 - device-side MQTT authentication uses `productKey`, `deviceName`, `deviceSecret`, and `instanceId` from `device_id.json`
 - copy `device_id.example.json` to `device_id.json` locally and fill in your real device credentials
+- `subDevice` is optional; if configured, the current C port will try to complete gateway topo sync and sub-device online flow
+- the current gateway signing implementation supports `hmacSha256` / `hmacsha256`
 - `deployProject` needs `curl` or `wget` on the target
 - ZIP extraction needs `unzip` or `busybox unzip` on the target
 

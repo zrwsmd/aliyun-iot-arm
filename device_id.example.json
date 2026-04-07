@@ -7,8 +7,10 @@
   "region": "cn-shanghai",
   "subDevice": [
     {
-      "productKey": "",
-      "deviceName": ""
+      "productKey": "yourSubProductKey",
+      "deviceName": "yourSubDeviceName",
+      "deviceSecret": "yourSubDeviceSecret",
+      "signMethod": "hmacsha256"
     },
     {
       "productKey": "",
