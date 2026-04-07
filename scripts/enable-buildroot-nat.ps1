@@ -26,7 +26,6 @@ function Assert-Administrator {
 
 function Resolve-TargetLinkInterfaceAlias {
     param(
-        [Parameter(Mandatory = $true)]
         [string]$InterfaceAlias,
         [Parameter(Mandatory = $true)]
         [string]$ManageIp
@@ -46,7 +45,6 @@ function Resolve-TargetLinkInterfaceAlias {
 
 function Resolve-WanInterfaceAlias {
     param(
-        [Parameter(Mandatory = $true)]
         [string]$InterfaceAlias,
         [Parameter(Mandatory = $true)]
         [string]$ExcludeAlias
