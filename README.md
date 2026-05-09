@@ -30,6 +30,7 @@ Important:
 - `demos/iot_ide_demo.c`: program entry
 - `src/`: formal device-side C modules
 - `scripts/build-arm64-cross-windows.ps1`: Windows cross-build script for your ARM64 toolchain
+- `docs/buildroot_service.md`: Buildroot init service setup for auto-starting `iot-ide`
 
 ## Build on Windows for ARM64
 
