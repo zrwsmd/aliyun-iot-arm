@@ -120,11 +120,13 @@ $SimulatorSourceFiles = $SimulatorSourceFiles | Sort-Object -Unique
 $DemoMain = Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'demos\iot_ide_demo.c')
 $RuntimeTestMain = Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'demos\iot_ide_runtime_api_test.c')
 $IecRuntimeSimulatorMain = Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'demos\iec_runtime_simulator.c')
+$IecRuntimeMainExample = Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'demos\iec_runtime_libiot_ide_main_example.c')
 
 $BinaryPath = Join-Path $OutputDir 'iot-ide'
 $SharedLibraryPath = Join-Path $OutputDir 'libiot_ide.so'
 $RuntimeTestPath = Join-Path $OutputDir 'iot_ide_runtime_api_test'
 $IecRuntimeSimulatorPath = Join-Path $OutputDir 'iec_runtime_simulator'
+$IecRuntimeMainExamplePath = Join-Path $OutputDir 'iec_runtime_libiot_ide_main_example'
 
 $BaseArgs = @(
     "--sysroot=$Sysroot"
@@ -173,12 +175,18 @@ if ($LASTEXITCODE -ne 0) {
     throw 'ARM64 iec_runtime_simulator build failed.'
 }
 
+& $Gcc @($BaseArgs + @($IecRuntimeMainExample, '-L', $OutputDir, "-Wl,-rpath,`$ORIGIN", '-liot_ide', '-o', $IecRuntimeMainExamplePath) + $LinkArgs)
+if ($LASTEXITCODE -ne 0) {
+    throw 'ARM64 iec_runtime libiot_ide main example build failed.'
+}
+
 Write-Host ''
 Write-Host 'ARM64 builds completed:'
 Write-Host "  $BinaryPath"
 Write-Host "  $SharedLibraryPath"
 Write-Host "  $RuntimeTestPath"
 Write-Host "  $IecRuntimeSimulatorPath"
+Write-Host "  $IecRuntimeMainExamplePath"
 
 if (Test-Path -LiteralPath $Readelf) {
     Write-Host ''
@@ -193,6 +201,9 @@ if (Test-Path -LiteralPath $Readelf) {
     Write-Host ''
     Write-Host 'iec_runtime_simulator architecture:'
     & $Readelf -h $IecRuntimeSimulatorPath | Select-String 'Machine|Class'
+    Write-Host ''
+    Write-Host 'iec_runtime_libiot_ide_main_example architecture:'
+    & $Readelf -h $IecRuntimeMainExamplePath | Select-String 'Machine|Class'
 }
 
 

@@ -12,6 +12,14 @@ libiot_ide.so
 demos/iec_runtime_simulator.c
 ```
 
+如果只想看最直观的动态库调用顺序，可以先看：
+
+```text
+demos/iec_runtime_libiot_ide_main_example.c
+```
+
+这个文件把初始化、连接、心跳、部署、启动、查询、断开这些动态库调用按顺序放在 `main()` 里，并在每一步前写了注释。
+
 它模拟真实 `iec_runtime`：
 
 - 连接阿里云 IoT MQTT
@@ -305,4 +313,3 @@ simulator_publish_trace(...)
 ```
 
 替换成真实 `iec_runtime` 的发布/回复函数即可。
-
