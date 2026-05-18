@@ -1,50 +1,31 @@
-#include "aiot_mqtt_api.h"
-#include "aiot_state_api.h"
-#include "aiot_sysdep_api.h"
-#include "device_config.h"
+#include "iot_ide_gateway_api.h"
 #include "iot_ide_runtime_api.h"
-#include "json_utils.h"
 
-#include <pthread.h>
 #include <signal.h>
-#include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-extern aiot_sysdep_portfile_t g_aiot_sysdep_portfile;
-extern const char *ali_ca_cert;
-
 typedef struct IecRuntime {
-    DeviceConfig config;
-    char mqtt_host[256];
-    void *mqtt_handle;
-    pthread_mutex_t mqtt_lock;
-    pthread_t mqtt_process_thread;
-    pthread_t mqtt_recv_thread;
-    int mqtt_process_thread_running;
-    int mqtt_recv_thread_running;
     volatile sig_atomic_t running;
+    IotIdeGateway *gateway;
     IotIdeRuntime *iot_ide;
 } IecRuntime;
 
 static IecRuntime *g_runtime = NULL;
 
 /*
- * Production iec_runtime integration source.
+ * Production integration entry.
  *
- * This file shows the production flow that iec_runtime should own:
+ * libiot_ide_gateway.so owns Aliyun MQTT connect, service subscription,
+ * service JSON parsing, property post, service reply, and trace publish.
  *
- * 1. connect Aliyun MQTT
- * 2. subscribe /sys/{pk}/{dn}/thing/service/#
- * 3. initialize libiot_ide.so
- * 4. dispatch Aliyun service params to libiot_ide.so C APIs
- * 5. publish libiot_ide.so callback events back to Aliyun
+ * libiot_ide.so owns IDE business behavior: connect lock, heartbeat,
+ * disconnect, deploy, start, and connection snapshot.
  *
- * Keep the libiot_ide.so API calls and callback mapping, and wire the MQTT
- * helper functions to iec_runtime's Aliyun connection/publish/reply
- * implementation.
+ * The real iec_runtime process only needs this glue layer: dispatch gateway
+ * service callbacks to libiot_ide.so, then forward libiot_ide.so events back
+ * to Aliyun through the gateway.
  */
 
 static void runtime_handle_signal(int signo) {
@@ -54,525 +35,156 @@ static void runtime_handle_signal(int signo) {
     }
 }
 
-static int32_t runtime_state_logcb(int32_t code, char *message) {
-    (void)code;
-    if (message != NULL) {
-        printf("%s", message);
-    }
-    return 0;
+static void runtime_reply_error(IotIdeGateway *gateway,
+                                const char *service_name,
+                                const char *request_id,
+                                const char *message) {
+    char response[512];
+
+    snprintf(response, sizeof(response),
+             "{\"success\":0,\"message\":\"%s\"}",
+             message == NULL ? "error" : message);
+    (void)iot_ide_gateway_reply_service(gateway, service_name, request_id, 200, response);
 }
 
-static int runtime_publish_topic(IecRuntime *runtime, const char *topic, const char *payload, uint8_t qos) {
-    int32_t res;
-
-    if (runtime == NULL || runtime->mqtt_handle == NULL || topic == NULL || payload == NULL) {
-        return -1;
-    }
-
-    pthread_mutex_lock(&runtime->mqtt_lock);
-    res = aiot_mqtt_pub(runtime->mqtt_handle, (char *)topic, (uint8_t *)payload, (uint32_t)strlen(payload), qos);
-    pthread_mutex_unlock(&runtime->mqtt_lock);
-
-    if (res < STATE_SUCCESS) {
-        fprintf(stderr, "mqtt publish failed, topic=%s, code=-0x%04X\n", topic, -res);
-        return -1;
-    }
-
-    return 0;
-}
-
-static int runtime_subscribe_topic(IecRuntime *runtime, const char *topic) {
-    int32_t res;
-
-    pthread_mutex_lock(&runtime->mqtt_lock);
-    res = aiot_mqtt_sub(runtime->mqtt_handle, (char *)topic, NULL, 1, NULL);
-    pthread_mutex_unlock(&runtime->mqtt_lock);
-
-    if (res < STATE_SUCCESS) {
-        fprintf(stderr, "mqtt subscribe failed, topic=%s, code=-0x%04X\n", topic, -res);
-        return -1;
-    }
-
-    printf("subscribed: %s\n", topic);
-    return 0;
-}
-
-static int runtime_post_properties(IecRuntime *runtime, const char *params_json) {
-    char topic[320];
-    char *payload;
-    size_t payload_size;
-    int rc;
-
-    if (runtime == NULL || params_json == NULL) {
-        return -1;
-    }
-
-    snprintf(topic, sizeof(topic), "/sys/%s/%s/thing/event/property/post",
-             runtime->config.product_key,
-             runtime->config.device_name);
-
-    payload_size = strlen(params_json) + 256;
-    payload = (char *)malloc(payload_size);
-    if (payload == NULL) {
-        return -1;
-    }
-
-    snprintf(payload, payload_size,
-             "{\"id\":\"%lld\",\"version\":\"1.0\",\"params\":%s,\"method\":\"thing.event.property.post\"}",
-             (long long)time(NULL) * 1000LL,
-             params_json);
-    rc = runtime_publish_topic(runtime, topic, payload, 0);
-    free(payload);
-    return rc;
-}
-
-static int runtime_reply_service(IecRuntime *runtime, const char *service_path, const char *request_id, int code, const char *data_json) {
-    char topic[320];
-    char *payload;
-    size_t payload_size;
-    int rc;
-
-    if (runtime == NULL || service_path == NULL) {
-        return -1;
-    }
-
-    snprintf(topic, sizeof(topic), "/sys/%s/%s/thing/service/%s_reply",
-             runtime->config.product_key,
-             runtime->config.device_name,
-             service_path);
-
-    payload_size = strlen(data_json == NULL ? "{}" : data_json) + strlen(request_id == NULL ? "0" : request_id) + 128;
-    payload = (char *)malloc(payload_size);
-    if (payload == NULL) {
-        return -1;
-    }
-
-    snprintf(payload, payload_size,
-             "{\"id\":\"%s\",\"code\":%d,\"data\":%s}",
-             (request_id == NULL || request_id[0] == '\0') ? "0" : request_id,
-             code,
-             (data_json == NULL || data_json[0] == '\0') ? "{}" : data_json);
-    rc = runtime_publish_topic(runtime, topic, payload, 0);
-    free(payload);
-    return rc;
-}
-
-static int runtime_publish_trace(IecRuntime *runtime, const char *payload_json) {
-    char topic[320];
-
-    if (runtime == NULL || payload_json == NULL) {
-        return -1;
-    }
-
-    snprintf(topic, sizeof(topic), "/%s/%s/user/trace/data",
-             runtime->config.product_key,
-             runtime->config.device_name);
-    return runtime_publish_topic(runtime, topic, payload_json, 0);
-}
-
-static void runtime_on_event(void *user_data, const char *event_name, const char *event_json) {
+static void runtime_on_iot_ide_event(void *user_data, const char *event_name, const char *event_json) {
     IecRuntime *runtime = (IecRuntime *)user_data;
 
-    printf("[iot_ide event] %s %s\n", event_name == NULL ? "" : event_name, event_json == NULL ? "" : event_json);
+    printf("[iot_ide event] %s %s\n",
+           event_name == NULL ? "" : event_name,
+           event_json == NULL ? "" : event_json);
 
-    if (runtime == NULL || event_name == NULL) {
+    if (runtime == NULL || runtime->gateway == NULL || event_name == NULL) {
         return;
     }
 
-    if (strcmp(event_name, "property.post") == 0) {
-        /*
-         * libiot_ide.so asks iec_runtime to report thing properties.
-         * Real iec_runtime should publish event_json as params to:
-         * /sys/{productKey}/{deviceName}/thing/event/property/post
-         */
-        (void)runtime_post_properties(runtime, event_json == NULL ? "{}" : event_json);
-    } else if (strcmp(event_name, "trace.publish") == 0) {
-        /*
-         * Optional trace publish path.
-         * Real iec_runtime can publish it or map it to its own trace channel.
-         */
-        (void)runtime_publish_trace(runtime, event_json == NULL ? "{}" : event_json);
-    } else if (strcmp(event_name, "service.reply") == 0) {
-        /*
-         * Optional centralized service reply path.
-         * Most service replies are sent directly after API calls
-         * in runtime_handle_service(), but this branch shows how to handle
-         * a reply requested from callback if future APIs use it.
-         */
-        char service_path[128] = "";
-        char request_id[64] = "0";
-        char code_text[32] = "200";
-        char data_json[4096] = "{}";
-
-        (void)json_get_string(event_json, "service", service_path, sizeof(service_path));
-        (void)json_get_string(event_json, "id", request_id, sizeof(request_id));
-        (void)json_get_raw_value(event_json, "code", code_text, sizeof(code_text));
-        (void)json_get_raw_value(event_json, "data", data_json, sizeof(data_json));
-        if (service_path[0] != '\0') {
-            (void)runtime_reply_service(runtime, service_path, request_id, atoi(code_text), data_json);
-        }
-    }
+    /*
+     * property.post -> gateway reports thing properties to Aliyun.
+     * trace.publish -> gateway publishes trace data to Aliyun.
+     * service.reply -> gateway replies to Aliyun service calls if a future
+     *                  libiot_ide.so API emits centralized replies.
+     */
+    (void)iot_ide_gateway_forward_event(runtime->gateway, event_name, event_json);
 }
 
-static void runtime_on_log(void *user_data, int level, const char *message) {
+static void runtime_on_iot_ide_log(void *user_data, int level, const char *message) {
     (void)user_data;
     printf("[iot_ide log:%d] %s\n", level, message == NULL ? "" : message);
 }
 
-static void runtime_reply_simple_error(IecRuntime *runtime, const char *service_path, const char *request_id, const char *message) {
-    char escaped[512];
-    char response[768];
-
-    if (json_escape_string(message == NULL ? "" : message, escaped, sizeof(escaped)) != 0) {
-        snprintf(escaped, sizeof(escaped), "error");
-    }
-
-    snprintf(response, sizeof(response), "{\"success\":0,\"message\":\"%s\"}", escaped);
-    (void)runtime_reply_service(runtime, service_path, request_id, 200, response);
+static void runtime_on_gateway_log(void *user_data, int level, const char *message) {
+    (void)user_data;
+    printf("[gateway log:%d] %s\n", level, message == NULL ? "" : message);
 }
 
-static int runtime_is_reply_topic(const char *service_path) {
-    size_t len;
-    const char *suffix = "_reply";
-    size_t suffix_len = strlen(suffix);
-
-    if (service_path == NULL) {
-        return 0;
-    }
-
-    len = strlen(service_path);
-    return len >= suffix_len && strcmp(service_path + len - suffix_len, suffix) == 0;
-}
-
-static void runtime_handle_service(IecRuntime *runtime, const char *topic, const char *payload) {
-    char prefix[320];
-    const char *service_path;
-    char request_id[64] = "0";
-    char params[8192] = "{}";
+static void runtime_on_service(void *user_data,
+                               IotIdeGateway *gateway,
+                               const char *service_name,
+                               const char *request_id,
+                               const char *params_json) {
+    IecRuntime *runtime = (IecRuntime *)user_data;
     char response[8192] = "{\"success\":0,\"message\":\"not handled\"}";
-    int rc = -1;
+    int rc = IOT_IDE_RUNTIME_ERR_INVALID_ARGUMENT;
 
-    if (runtime == NULL || topic == NULL || payload == NULL) {
+    if (runtime == NULL || runtime->iot_ide == NULL || gateway == NULL || service_name == NULL) {
         return;
     }
-
-    snprintf(prefix, sizeof(prefix), "/sys/%s/%s/thing/service/",
-             runtime->config.product_key,
-             runtime->config.device_name);
-
-    if (strncmp(topic, prefix, strlen(prefix)) != 0) {
-        return;
-    }
-
-    service_path = topic + strlen(prefix);
-    if (runtime_is_reply_topic(service_path)) {
-        return;
-    }
-
-    (void)json_get_raw_value(payload, "id", request_id, sizeof(request_id));
-    if (json_get_object(payload, "params", params, sizeof(params)) != 0) {
-        snprintf(params, sizeof(params), "{}");
-    }
-
-    printf("service=%s id=%s params=%s\n", service_path, request_id, params);
 
     /*
-     * This is the most important integration block for real iec_runtime.
+     * This is the key production integration block.
      *
-     * Real iec_runtime receives Aliyun serviceName + params, then calls the
-     * matching libiot_ide.so API below. The response must be sent back to
-     * /sys/{pk}/{dn}/thing/service/{serviceName}_reply.
+     * Aliyun service name + params_json come from libiot_ide_gateway.so.
+     * libiot_ide.so executes the IDE business logic and fills response.
+     * The response is then sent back to Aliyun through the gateway.
      */
-    if (strcmp(service_path, "requestConnect") == 0) {
-        rc = iot_ide_runtime_request_connect(runtime->iot_ide, params, response, sizeof(response));
-    } else if (strcmp(service_path, "requestDisconnect") == 0) {
-        rc = iot_ide_runtime_request_disconnect(runtime->iot_ide, params, response, sizeof(response));
-    } else if (strcmp(service_path, "ideHeartbeat") == 0) {
-        rc = iot_ide_runtime_heartbeat(runtime->iot_ide, params, response, sizeof(response));
-    } else if (strcmp(service_path, "deployProject") == 0) {
-        rc = iot_ide_runtime_deploy_project(runtime->iot_ide, params, response, sizeof(response));
-    } else if (strcmp(service_path, "startProject") == 0) {
-        rc = iot_ide_runtime_start_project(runtime->iot_ide, params, response, sizeof(response));
-    } else if (strcmp(service_path, "property/get") == 0) {
+    if (strcmp(service_name, "requestConnect") == 0) {
+        rc = iot_ide_runtime_request_connect(runtime->iot_ide, params_json, response, sizeof(response));
+    } else if (strcmp(service_name, "requestDisconnect") == 0) {
+        rc = iot_ide_runtime_request_disconnect(runtime->iot_ide, params_json, response, sizeof(response));
+    } else if (strcmp(service_name, "ideHeartbeat") == 0) {
+        rc = iot_ide_runtime_heartbeat(runtime->iot_ide, params_json, response, sizeof(response));
+    } else if (strcmp(service_name, "deployProject") == 0) {
+        rc = iot_ide_runtime_deploy_project(runtime->iot_ide, params_json, response, sizeof(response));
+    } else if (strcmp(service_name, "startProject") == 0) {
+        rc = iot_ide_runtime_start_project(runtime->iot_ide, params_json, response, sizeof(response));
+    } else if (strcmp(service_name, "property/get") == 0) {
         rc = iot_ide_runtime_get_connection_snapshot(runtime->iot_ide, response, sizeof(response));
-    } else if (strcmp(service_path, "property/set") == 0) {
-        (void)runtime_post_properties(runtime, params);
+    } else if (strcmp(service_name, "property/set") == 0) {
+        (void)iot_ide_gateway_post_properties(gateway, params_json == NULL ? "{}" : params_json);
         snprintf(response, sizeof(response), "{\"success\":1,\"message\":\"property set accepted\"}");
-        rc = 0;
+        rc = IOT_IDE_RUNTIME_OK;
     } else {
-        runtime_reply_simple_error(runtime, service_path, request_id, "unknown service");
+        runtime_reply_error(gateway, service_name, request_id, "unknown service");
         return;
     }
 
-    printf("service response rc=%d data=%s\n", rc, response);
-    (void)runtime_reply_service(runtime, service_path, request_id, 200, response);
-}
-
-static void runtime_mqtt_recv_handler(void *handle, const aiot_mqtt_recv_t *packet, void *userdata) {
-    IecRuntime *runtime = (IecRuntime *)userdata;
-    (void)handle;
-
-    if (runtime == NULL || packet == NULL) {
-        return;
-    }
-
-    switch (packet->type) {
-        case AIOT_MQTTRECV_HEARTBEAT_RESPONSE:
-            printf("heartbeat response\n");
-            break;
-        case AIOT_MQTTRECV_SUB_ACK:
-            printf("suback packet id=%d max_qos=%d\n", packet->data.sub_ack.packet_id, packet->data.sub_ack.max_qos);
-            break;
-        case AIOT_MQTTRECV_PUB_ACK:
-            printf("puback packet id=%d\n", packet->data.pub_ack.packet_id);
-            break;
-        case AIOT_MQTTRECV_PUB: {
-            size_t topic_len = packet->data.pub.topic_len;
-            size_t payload_len = packet->data.pub.payload_len;
-            char *topic_text = (char *)malloc(topic_len + 1);
-            char *payload_text = (char *)malloc(payload_len + 1);
-
-            if (topic_text == NULL || payload_text == NULL) {
-                free(topic_text);
-                free(payload_text);
-                return;
-            }
-
-            memcpy(topic_text, packet->data.pub.topic, topic_len);
-            topic_text[topic_len] = '\0';
-            memcpy(payload_text, packet->data.pub.payload, payload_len);
-            payload_text[payload_len] = '\0';
-
-            printf("mqtt pub topic=%s\n", topic_text);
-            printf("mqtt pub payload=%s\n", payload_text);
-            runtime_handle_service(runtime, topic_text, payload_text);
-
-            free(topic_text);
-            free(payload_text);
-            break;
-        }
-        default:
-            break;
-    }
-}
-
-static void runtime_mqtt_event_handler(void *handle, const aiot_mqtt_event_t *event, void *userdata) {
-    (void)handle;
-    (void)userdata;
-
-    if (event == NULL) {
-        return;
-    }
-
-    switch (event->type) {
-        case AIOT_MQTTEVT_CONNECT:
-            printf("AIOT_MQTTEVT_CONNECT\n");
-            break;
-        case AIOT_MQTTEVT_RECONNECT:
-            printf("AIOT_MQTTEVT_RECONNECT\n");
-            break;
-        case AIOT_MQTTEVT_DISCONNECT:
-            printf("AIOT_MQTTEVT_DISCONNECT\n");
-            break;
-        default:
-            break;
-    }
-}
-
-static void *runtime_mqtt_process_thread_main(void *arg) {
-    IecRuntime *runtime = (IecRuntime *)arg;
-
-    while (runtime->mqtt_process_thread_running) {
-        int32_t res = aiot_mqtt_process(runtime->mqtt_handle);
-        if (res == STATE_USER_INPUT_EXEC_DISABLED) {
-            break;
-        }
-        sleep(1);
-    }
-
-    return NULL;
-}
-
-static void *runtime_mqtt_recv_thread_main(void *arg) {
-    IecRuntime *runtime = (IecRuntime *)arg;
-
-    while (runtime->mqtt_recv_thread_running) {
-        int32_t res = aiot_mqtt_recv(runtime->mqtt_handle);
-        if (res < STATE_SUCCESS) {
-            if (res == STATE_USER_INPUT_EXEC_DISABLED) {
-                break;
-            }
-            sleep(1);
-        }
-    }
-
-    return NULL;
-}
-
-static int runtime_start_mqtt(IecRuntime *runtime) {
-    aiot_sysdep_network_cred_t cred;
-    uint16_t port = 8883;
-    int32_t res;
-    char service_topic[320];
-
-    aiot_sysdep_set_portfile(&g_aiot_sysdep_portfile);
-    aiot_state_set_logcb(runtime_state_logcb);
-
-    memset(&cred, 0, sizeof(cred));
-    cred.option = AIOT_SYSDEP_NETWORK_CRED_SVRCERT_CA;
-    cred.max_tls_fragment = 16384;
-    cred.sni_enabled = 1;
-    cred.x509_server_cert = ali_ca_cert;
-    cred.x509_server_cert_len = strlen(ali_ca_cert);
-
-    runtime->mqtt_handle = aiot_mqtt_init();
-    if (runtime->mqtt_handle == NULL) {
-        return -1;
-    }
-
-    aiot_mqtt_setopt(runtime->mqtt_handle, AIOT_MQTTOPT_HOST, (void *)runtime->mqtt_host);
-    aiot_mqtt_setopt(runtime->mqtt_handle, AIOT_MQTTOPT_PORT, (void *)&port);
-    aiot_mqtt_setopt(runtime->mqtt_handle, AIOT_MQTTOPT_PRODUCT_KEY, (void *)runtime->config.product_key);
-    aiot_mqtt_setopt(runtime->mqtt_handle, AIOT_MQTTOPT_DEVICE_NAME, (void *)runtime->config.device_name);
-    aiot_mqtt_setopt(runtime->mqtt_handle, AIOT_MQTTOPT_DEVICE_SECRET, (void *)runtime->config.device_secret);
-    aiot_mqtt_setopt(runtime->mqtt_handle, AIOT_MQTTOPT_NETWORK_CRED, (void *)&cred);
-    aiot_mqtt_setopt(runtime->mqtt_handle, AIOT_MQTTOPT_RECV_HANDLER, (void *)runtime_mqtt_recv_handler);
-    aiot_mqtt_setopt(runtime->mqtt_handle, AIOT_MQTTOPT_EVENT_HANDLER, (void *)runtime_mqtt_event_handler);
-    aiot_mqtt_setopt(runtime->mqtt_handle, AIOT_MQTTOPT_USERDATA, (void *)runtime);
-
-    res = aiot_mqtt_connect(runtime->mqtt_handle);
-    if (res < STATE_SUCCESS) {
-        fprintf(stderr, "aiot_mqtt_connect failed: -0x%04X\n", -res);
-        return -1;
-    }
-
-    snprintf(service_topic, sizeof(service_topic), "/sys/%s/%s/thing/service/#",
-             runtime->config.product_key,
-             runtime->config.device_name);
-    if (runtime_subscribe_topic(runtime, service_topic) != 0) {
-        return -1;
-    }
-
-    runtime->mqtt_process_thread_running = 1;
-    runtime->mqtt_recv_thread_running = 1;
-    if (pthread_create(&runtime->mqtt_process_thread, NULL, runtime_mqtt_process_thread_main, runtime) != 0) {
-        return -1;
-    }
-    if (pthread_create(&runtime->mqtt_recv_thread, NULL, runtime_mqtt_recv_thread_main, runtime) != 0) {
-        runtime->mqtt_process_thread_running = 0;
-        pthread_join(runtime->mqtt_process_thread, NULL);
-        return -1;
-    }
-
-    return 0;
-}
-
-static void runtime_stop_mqtt(IecRuntime *runtime) {
-    int join_process;
-    int join_recv;
-
-    if (runtime == NULL) {
-        return;
-    }
-
-    join_process = runtime->mqtt_process_thread_running;
-    join_recv = runtime->mqtt_recv_thread_running;
-    runtime->mqtt_process_thread_running = 0;
-    runtime->mqtt_recv_thread_running = 0;
-
-    if (runtime->mqtt_handle != NULL) {
-        aiot_mqtt_disconnect(runtime->mqtt_handle);
-    }
-
-    if (join_process) {
-        pthread_join(runtime->mqtt_process_thread, NULL);
-    }
-    if (join_recv) {
-        pthread_join(runtime->mqtt_recv_thread, NULL);
-    }
-
-    if (runtime->mqtt_handle != NULL) {
-        aiot_mqtt_deinit(&runtime->mqtt_handle);
-    }
+    printf("service response service=%s rc=%d data=%s\n", service_name, rc, response);
+    (void)iot_ide_gateway_reply_service(gateway, service_name, request_id, 200, response);
 }
 
 int main(int argc, char **argv) {
     const char *config_path = argc > 1 ? argv[1] : "./device_id.json";
     IecRuntime runtime;
-    IotIdeRuntimeCallbacks callbacks;
-    IotIdeRuntimeOptions options;
+    IotIdeGatewayCallbacks gateway_callbacks;
+    IotIdeGatewayOptions gateway_options;
+    IotIdeRuntimeCallbacks iot_ide_callbacks;
+    IotIdeRuntimeOptions iot_ide_options;
+    char product_key[128] = "";
+    char device_name[128] = "";
+    char mqtt_host[256] = "";
 
     memset(&runtime, 0, sizeof(runtime));
-    memset(&callbacks, 0, sizeof(callbacks));
-    memset(&options, 0, sizeof(options));
+    memset(&gateway_callbacks, 0, sizeof(gateway_callbacks));
+    memset(&gateway_options, 0, sizeof(gateway_options));
+    memset(&iot_ide_callbacks, 0, sizeof(iot_ide_callbacks));
+    memset(&iot_ide_options, 0, sizeof(iot_ide_options));
 
     g_runtime = &runtime;
     runtime.running = 1;
     signal(SIGINT, runtime_handle_signal);
     signal(SIGTERM, runtime_handle_signal);
 
-    /*
-     * Step 1:
-     * Load device identity for the Aliyun MQTT connection owned by iec_runtime.
-     *
-     * In the real iec_runtime, this may come from its own config system rather
-     * than this project's device_id.json.
-     */
-    if (pthread_mutex_init(&runtime.mqtt_lock, NULL) != 0) {
-        fprintf(stderr, "failed to init mqtt lock\n");
+    gateway_callbacks.on_service = runtime_on_service;
+    gateway_callbacks.on_log = runtime_on_gateway_log;
+    gateway_options.config_path = config_path;
+    gateway_options.callbacks = &gateway_callbacks;
+    gateway_options.user_data = &runtime;
+
+    if (iot_ide_gateway_create(&gateway_options, &runtime.gateway) != IOT_IDE_GATEWAY_OK) {
+        fprintf(stderr, "iot_ide_gateway_create failed\n");
         return 1;
     }
 
-    if (device_config_load(config_path, &runtime.config) != 0 ||
-        device_config_build_mqtt_host(&runtime.config, runtime.mqtt_host, sizeof(runtime.mqtt_host)) != 0) {
-        pthread_mutex_destroy(&runtime.mqtt_lock);
-        return 1;
-    }
+    iot_ide_callbacks.on_event = runtime_on_iot_ide_event;
+    iot_ide_callbacks.on_log = runtime_on_iot_ide_log;
+    iot_ide_options.work_dir = ".";
+    iot_ide_options.callbacks = &iot_ide_callbacks;
+    iot_ide_options.user_data = &runtime;
 
-    /*
-     * Step 2:
-     * Register libiot_ide.so callbacks.
-     *
-     * libiot_ide.so does not publish to Aliyun directly. It sends events back
-     * to iec_runtime via callbacks. The real iec_runtime should map these
-     * callbacks to its own Aliyun property/report/reply functions.
-     */
-    callbacks.on_event = runtime_on_event;
-    callbacks.on_log = runtime_on_log;
-    options.work_dir = ".";
-    options.callbacks = &callbacks;
-    options.user_data = &runtime;
-
-    /*
-     * Step 3:
-     * Initialize libiot_ide.so.
-     *
-     * After this, service calls received from Aliyun can be dispatched to
-     * iot_ide_runtime_request_connect(), iot_ide_runtime_deploy_project(), etc.
-     */
-    if (iot_ide_runtime_create(&options, &runtime.iot_ide) != IOT_IDE_RUNTIME_OK) {
+    if (iot_ide_runtime_create(&iot_ide_options, &runtime.iot_ide) != IOT_IDE_RUNTIME_OK) {
         fprintf(stderr, "iot_ide_runtime_create failed\n");
-        pthread_mutex_destroy(&runtime.mqtt_lock);
+        iot_ide_gateway_destroy(runtime.gateway);
         return 1;
     }
+
+    (void)iot_ide_gateway_get_device_info(runtime.gateway,
+                                          product_key,
+                                          sizeof(product_key),
+                                          device_name,
+                                          sizeof(device_name),
+                                          mqtt_host,
+                                          sizeof(mqtt_host));
 
     printf("=== iec_runtime ===\n");
     printf("config: %s\n", config_path);
-    printf("productKey: %s\n", runtime.config.product_key);
-    printf("deviceName: %s\n", runtime.config.device_name);
-    printf("mqttHost: %s\n", runtime.mqtt_host);
+    printf("productKey: %s\n", product_key);
+    printf("deviceName: %s\n", device_name);
+    printf("mqttHost: %s\n", mqtt_host);
 
-    /*
-     * Step 4:
-     * Connect Aliyun MQTT and subscribe service topics.
-     *
-     * This is required in production because iec_runtime is the process that
-     * receives Aliyun service calls and publishes replies/properties.
-     */
-    if (runtime_start_mqtt(&runtime) != 0) {
-        fprintf(stderr, "runtime_start_mqtt failed\n");
+    if (iot_ide_gateway_start(runtime.gateway) != IOT_IDE_GATEWAY_OK) {
+        fprintf(stderr, "iot_ide_gateway_start failed\n");
         iot_ide_runtime_destroy(runtime.iot_ide);
-        pthread_mutex_destroy(&runtime.mqtt_lock);
+        iot_ide_gateway_destroy(runtime.gateway);
         return 1;
     }
 
@@ -580,13 +192,9 @@ int main(int argc, char **argv) {
         sleep(1);
     }
 
-    /*
-     * Step 5:
-     * Clean shutdown.
-     */
-    runtime_stop_mqtt(&runtime);
+    iot_ide_gateway_stop(runtime.gateway);
     iot_ide_runtime_destroy(runtime.iot_ide);
-    pthread_mutex_destroy(&runtime.mqtt_lock);
+    iot_ide_gateway_destroy(runtime.gateway);
     printf("iec_runtime exit\n");
     return 0;
 }

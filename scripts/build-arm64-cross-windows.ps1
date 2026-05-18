@@ -102,26 +102,30 @@ $IncludeDirs = @(
     (Join-Path $ProjectRoot 'src')
 )
 
-$CommonSourceFiles = @()
-$CommonSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'core') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
-$CommonSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'external') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
-$CommonSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'portfiles\aiot_port') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
-$CommonSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'src') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
-$CommonSourceFiles = $CommonSourceFiles | Sort-Object -Unique
+$SdkSourceFiles = @()
+$SdkSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'core') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
+$SdkSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'external') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
+$SdkSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'portfiles\aiot_port') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
+$SdkSourceFiles = $SdkSourceFiles | Sort-Object -Unique
 
-$IecRuntimeSourceFiles = @()
-$IecRuntimeSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'core') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
-$IecRuntimeSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'external') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
-$IecRuntimeSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'portfiles\aiot_port') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
-$IecRuntimeSourceFiles += Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'src\device_config.c')
-$IecRuntimeSourceFiles += Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'src\json_utils.c')
-$IecRuntimeSourceFiles = $IecRuntimeSourceFiles | Sort-Object -Unique
+$SrcSourceFiles = Get-ChildItem -Path (Join-Path $ProjectRoot 'src') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
+$SrcWithoutGatewaySourceFiles = $SrcSourceFiles | Where-Object { [System.IO.Path]::GetFileName($_) -ne 'iot_ide_gateway_api.c' }
+
+$AppSourceFiles = @($SdkSourceFiles + $SrcWithoutGatewaySourceFiles) | Sort-Object -Unique
+$RuntimeLibrarySourceFiles = @($SdkSourceFiles + $SrcWithoutGatewaySourceFiles) | Sort-Object -Unique
+$GatewayLibrarySourceFiles = @()
+$GatewayLibrarySourceFiles += $SdkSourceFiles
+$GatewayLibrarySourceFiles += Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'src\device_config.c')
+$GatewayLibrarySourceFiles += Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'src\json_utils.c')
+$GatewayLibrarySourceFiles += Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'src\iot_ide_gateway_api.c')
+$GatewayLibrarySourceFiles = $GatewayLibrarySourceFiles | Sort-Object -Unique
 
 $DemoMain = Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'demos\iot_ide_demo.c')
 $IecRuntimeMain = Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'iec_runtime.c')
 
 $BinaryPath = Join-Path $OutputDir 'iot-ide'
 $SharedLibraryPath = Join-Path $OutputDir 'libiot_ide.so'
+$GatewaySharedLibraryPath = Join-Path $OutputDir 'libiot_ide_gateway.so'
 $IecRuntimePath = Join-Path $OutputDir 'iec_runtime'
 
 $BaseArgs = @(
@@ -151,17 +155,22 @@ $LinkArgs = @(
     '-lrt'
 )
 
-& $Gcc @($BaseArgs + $CommonSourceFiles + @($DemoMain, '-o', $BinaryPath) + $LinkArgs)
+& $Gcc @($BaseArgs + $AppSourceFiles + @($DemoMain, '-o', $BinaryPath) + $LinkArgs)
 if ($LASTEXITCODE -ne 0) {
     throw 'ARM64 iot-ide build failed.'
 }
 
-& $Gcc @($BaseArgs + @('-shared', '-Wl,-soname,libiot_ide.so') + $CommonSourceFiles + @('-o', $SharedLibraryPath) + $LinkArgs)
+& $Gcc @($BaseArgs + @('-shared', '-Wl,-soname,libiot_ide.so') + $RuntimeLibrarySourceFiles + @('-o', $SharedLibraryPath) + $LinkArgs)
 if ($LASTEXITCODE -ne 0) {
     throw 'ARM64 libiot_ide.so build failed.'
 }
 
-& $Gcc @($BaseArgs + $IecRuntimeSourceFiles + @($IecRuntimeMain, '-L', $OutputDir, "-Wl,-rpath,`$ORIGIN", '-liot_ide', '-o', $IecRuntimePath) + $LinkArgs)
+& $Gcc @($BaseArgs + @('-shared', '-Wl,-soname,libiot_ide_gateway.so') + $GatewayLibrarySourceFiles + @('-o', $GatewaySharedLibraryPath) + $LinkArgs)
+if ($LASTEXITCODE -ne 0) {
+    throw 'ARM64 libiot_ide_gateway.so build failed.'
+}
+
+& $Gcc @($BaseArgs + @($IecRuntimeMain, '-L', $OutputDir, "-Wl,-rpath,`$ORIGIN", '-liot_ide_gateway', '-liot_ide', '-o', $IecRuntimePath) + $LinkArgs)
 if ($LASTEXITCODE -ne 0) {
     throw 'ARM64 iec_runtime build failed.'
 }
@@ -170,6 +179,7 @@ Write-Host ''
 Write-Host 'ARM64 builds completed:'
 Write-Host "  $BinaryPath"
 Write-Host "  $SharedLibraryPath"
+Write-Host "  $GatewaySharedLibraryPath"
 Write-Host "  $IecRuntimePath"
 
 if (Test-Path -LiteralPath $Readelf) {
@@ -179,6 +189,9 @@ if (Test-Path -LiteralPath $Readelf) {
     Write-Host ''
     Write-Host 'libiot_ide.so architecture:'
     & $Readelf -h $SharedLibraryPath | Select-String 'Machine|Class'
+    Write-Host ''
+    Write-Host 'libiot_ide_gateway.so architecture:'
+    & $Readelf -h $GatewaySharedLibraryPath | Select-String 'Machine|Class'
     Write-Host ''
     Write-Host 'iec_runtime architecture:'
     & $Readelf -h $IecRuntimePath | Select-String 'Machine|Class'
