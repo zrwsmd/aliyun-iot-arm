@@ -32,6 +32,7 @@ Important:
 - `src/`: formal device-side C modules
 - `scripts/build-arm64-cross-windows.ps1`: Windows cross-build script for your ARM64 toolchain
 - `docs/buildroot_service.md`: Buildroot init service setup for auto-starting `iot-ide`
+- `docs/iec_runtime_buildroot_run.md`: Buildroot run steps for `iec_runtime + libiot_ide.so`
 - `docs/four_party_call_flow.md`: flow notes for local IDE, Aliyun, `iec_runtime`, and `libiot_ide.so`
 
 ## Build on Windows for ARM64
