@@ -288,6 +288,7 @@ cleanup:
     unlink(zip_path);
     pthread_mutex_lock(&task->manager->lock);
     task->manager->busy = 0;
+    pthread_cond_signal(&task->manager->idle_cond);
     pthread_mutex_unlock(&task->manager->lock);
     sb_free(&log);
     free(task);
@@ -301,13 +302,28 @@ int deploy_manager_init(DeployManager *manager, struct AppContext *app) {
 
     memset(manager, 0, sizeof(*manager));
     manager->app = app;
-    return pthread_mutex_init(&manager->lock, NULL) == 0 ? 0 : -1;
+    if (pthread_mutex_init(&manager->lock, NULL) != 0) {
+        return -1;
+    }
+    if (pthread_cond_init(&manager->idle_cond, NULL) != 0) {
+        pthread_mutex_destroy(&manager->lock);
+        return -1;
+    }
+    return 0;
 }
 
 void deploy_manager_cleanup(DeployManager *manager) {
     if (manager == NULL) {
         return;
     }
+
+    pthread_mutex_lock(&manager->lock);
+    while (manager->busy) {
+        pthread_cond_wait(&manager->idle_cond, &manager->lock);
+    }
+    pthread_mutex_unlock(&manager->lock);
+
+    pthread_cond_destroy(&manager->idle_cond);
     pthread_mutex_destroy(&manager->lock);
 }
 

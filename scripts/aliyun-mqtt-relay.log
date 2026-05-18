@@ -1,0 +1,2 @@
+2026-05-18T11:04:13.2629556+08:00 relay bootstrap listen=192.168.37.69:8883 remote=iot-06z00d8xy9ns00z.mqtt.iothub.aliyuncs.com:8883
+2026-05-18T11:04:13.3224112+08:00 relay started listen=192.168.37.69:8883 remote=iot-06z00d8xy9ns00z.mqtt.iothub.aliyuncs.com:8883

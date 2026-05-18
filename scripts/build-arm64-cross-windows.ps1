@@ -97,25 +97,31 @@ $IncludeDirs = @(
     (Join-Path $ProjectRoot 'core\utils'),
     (Join-Path $ProjectRoot 'external'),
     (Join-Path $ProjectRoot 'external\mbedtls\include'),
-    (Join-Path $ProjectRoot 'portfiles\aiot_port')
+    (Join-Path $ProjectRoot 'portfiles\aiot_port'),
+    (Join-Path $ProjectRoot 'include'),
     (Join-Path $ProjectRoot 'src')
 )
 
-$SourceFiles = @()
-$SourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'core') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
-$SourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'external') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
-$SourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'portfiles\aiot_port') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
-$SourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'src') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
-$SourceFiles += Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'demos\iot_ide_demo.c')
-$SourceFiles = $SourceFiles | Sort-Object -Unique
+$CommonSourceFiles = @()
+$CommonSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'core') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
+$CommonSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'external') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
+$CommonSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'portfiles\aiot_port') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
+$CommonSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'src') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
+$CommonSourceFiles = $CommonSourceFiles | Sort-Object -Unique
+
+$DemoMain = Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'demos\iot_ide_demo.c')
+$RuntimeTestMain = Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'demos\iot_ide_runtime_api_test.c')
 
 $BinaryPath = Join-Path $OutputDir 'iot-ide'
+$SharedLibraryPath = Join-Path $OutputDir 'libiot_ide.so'
+$RuntimeTestPath = Join-Path $OutputDir 'iot_ide_runtime_api_test'
 
-$Args = @(
+$BaseArgs = @(
     "--sysroot=$Sysroot"
     '-std=c11'
     '-O2'
     '-Wall'
+    '-fPIC'
     '-D_POSIX_C_SOURCE=200809L'
     '-D_DEFAULT_SOURCE'
     '-Wno-unused-parameter'
@@ -123,35 +129,51 @@ $Args = @(
 )
 
 foreach ($dir in $IncludeDirs) {
-    $Args += @('-I', $dir)
+    $BaseArgs += @('-I', $dir)
 }
 
-$Args += $SourceFiles
-$Args += @(
+$LinkArgs = @(
     '-L', $ShimRoot,
     '-L', (Join-Path $Sysroot 'usr\lib64'),
     "-Wl,-rpath-link,$(Join-Path $Sysroot 'lib64')",
     "-Wl,-rpath-link,$(Join-Path $Sysroot 'usr\lib64')",
-    '-o', $BinaryPath,
     '-lpthread',
     '-ldl',
     '-lm',
     '-lrt'
 )
 
-& $Gcc @Args
+& $Gcc @($BaseArgs + $CommonSourceFiles + @($DemoMain, '-o', $BinaryPath) + $LinkArgs)
 if ($LASTEXITCODE -ne 0) {
-    throw 'ARM64 build failed.'
+    throw 'ARM64 iot-ide build failed.'
+}
+
+& $Gcc @($BaseArgs + @('-shared', '-Wl,-soname,libiot_ide.so') + $CommonSourceFiles + @('-o', $SharedLibraryPath) + $LinkArgs)
+if ($LASTEXITCODE -ne 0) {
+    throw 'ARM64 libiot_ide.so build failed.'
+}
+
+& $Gcc @($BaseArgs + @($RuntimeTestMain, '-L', $OutputDir, "-Wl,-rpath,`$ORIGIN", '-liot_ide', '-o', $RuntimeTestPath) + $LinkArgs)
+if ($LASTEXITCODE -ne 0) {
+    throw 'ARM64 runtime API test build failed.'
 }
 
 Write-Host ''
-Write-Host 'ARM64 build completed:'
+Write-Host 'ARM64 builds completed:'
 Write-Host "  $BinaryPath"
+Write-Host "  $SharedLibraryPath"
+Write-Host "  $RuntimeTestPath"
 
 if (Test-Path -LiteralPath $Readelf) {
     Write-Host ''
-    Write-Host 'Binary architecture:'
+    Write-Host 'iot-ide architecture:'
     & $Readelf -h $BinaryPath | Select-String 'Machine|Class'
+    Write-Host ''
+    Write-Host 'libiot_ide.so architecture:'
+    & $Readelf -h $SharedLibraryPath | Select-String 'Machine|Class'
+    Write-Host ''
+    Write-Host 'iot_ide_runtime_api_test architecture:'
+    & $Readelf -h $RuntimeTestPath | Select-String 'Machine|Class'
 }
 
 

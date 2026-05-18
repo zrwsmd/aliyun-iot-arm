@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #define HEARTBEAT_TIMEOUT_MS (2LL * 60LL * 1000LL)
@@ -152,11 +153,21 @@ static void ide_unlock_internal(IdeConnectionManager *manager) {
 static void *ide_heartbeat_thread(void *arg) {
     IdeConnectionManager *manager = (IdeConnectionManager *)arg;
 
-    while (manager->heartbeat_thread_running) {
+    while (1) {
         int should_release = 0;
+        int keep_running;
+        struct timespec deadline;
 
-        sleep(HEARTBEAT_CHECK_INTERVAL_SEC);
-        if (!manager->heartbeat_thread_running) {
+        clock_gettime(CLOCK_REALTIME, &deadline);
+        deadline.tv_sec += HEARTBEAT_CHECK_INTERVAL_SEC;
+
+        pthread_mutex_lock(&manager->heartbeat_lock);
+        if (manager->heartbeat_thread_running) {
+            (void)pthread_cond_timedwait(&manager->heartbeat_cond, &manager->heartbeat_lock, &deadline);
+        }
+        keep_running = manager->heartbeat_thread_running;
+        pthread_mutex_unlock(&manager->heartbeat_lock);
+        if (!keep_running) {
             break;
         }
 
@@ -185,9 +196,20 @@ int ide_connection_manager_init(IdeConnectionManager *manager, struct AppContext
     if (pthread_mutex_init(&manager->lock, NULL) != 0) {
         return -1;
     }
+    if (pthread_mutex_init(&manager->heartbeat_lock, NULL) != 0) {
+        pthread_mutex_destroy(&manager->lock);
+        return -1;
+    }
+    if (pthread_cond_init(&manager->heartbeat_cond, NULL) != 0) {
+        pthread_mutex_destroy(&manager->heartbeat_lock);
+        pthread_mutex_destroy(&manager->lock);
+        return -1;
+    }
 
     manager->heartbeat_thread_running = 1;
     if (pthread_create(&manager->heartbeat_thread, NULL, ide_heartbeat_thread, manager) != 0) {
+        pthread_cond_destroy(&manager->heartbeat_cond);
+        pthread_mutex_destroy(&manager->heartbeat_lock);
         pthread_mutex_destroy(&manager->lock);
         return -1;
     }
@@ -200,8 +222,13 @@ void ide_connection_manager_cleanup(IdeConnectionManager *manager) {
         return;
     }
 
+    pthread_mutex_lock(&manager->heartbeat_lock);
     manager->heartbeat_thread_running = 0;
+    pthread_cond_signal(&manager->heartbeat_cond);
+    pthread_mutex_unlock(&manager->heartbeat_lock);
     pthread_join(manager->heartbeat_thread, NULL);
+    pthread_cond_destroy(&manager->heartbeat_cond);
+    pthread_mutex_destroy(&manager->heartbeat_lock);
     pthread_mutex_destroy(&manager->lock);
 }
 

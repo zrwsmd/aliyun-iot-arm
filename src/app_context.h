@@ -14,6 +14,9 @@
 #include "start_manager.h"
 #include "trace_simulator.h"
 
+typedef void (*AppRuntimeEventCallback)(void *user_data, const char *event_name, const char *event_json);
+typedef void (*AppRuntimeLogCallback)(void *user_data, int level, const char *message);
+
 typedef struct AppContext {
     DeviceConfig config;
     char mqtt_host[256];
@@ -31,6 +34,11 @@ typedef struct AppContext {
     DeviceShadowManager shadow_manager;
     GatewayManager gateway_manager;
     TraceSimulator trace_simulator;
+    int runtime_library_mode;
+    AppRuntimeEventCallback runtime_event_cb;
+    AppRuntimeLogCallback runtime_log_cb;
+    void *runtime_user_data;
+    char runtime_work_dir[512];
 } AppContext;
 
 #endif

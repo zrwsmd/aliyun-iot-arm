@@ -31,6 +31,7 @@ Important:
 - `src/`: formal device-side C modules
 - `scripts/build-arm64-cross-windows.ps1`: Windows cross-build script for your ARM64 toolchain
 - `docs/buildroot_service.md`: Buildroot init service setup for auto-starting `iot-ide`
+- `docs/iot_ide_dynamic_library_integration.md`: C API dynamic library integration notes for `iec_runtime`
 
 ## Build on Windows for ARM64
 
@@ -46,6 +47,13 @@ The output binary will be generated at:
 
 ```text
 build\arm64-cross\iot-ide
+```
+
+The same build also generates the dynamic library and runtime API test binary:
+
+```text
+build\arm64-cross\libiot_ide.so
+build\arm64-cross\iot_ide_runtime_api_test
 ```
 
 ## Run on the Buildroot target

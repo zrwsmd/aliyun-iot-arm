@@ -9,6 +9,7 @@ struct AppContext;
 typedef struct DeployManager {
     struct AppContext *app;
     pthread_mutex_t lock;
+    pthread_cond_t idle_cond;
     int busy;
 } DeployManager;
 

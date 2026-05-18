@@ -12,5 +12,7 @@ int app_subscribe_topic(AppContext *app, const char *topic);
 int app_post_properties(AppContext *app, const char *params_json);
 int app_reply_service(AppContext *app, const char *service_path, const char *request_id, int code, const char *data_json);
 int app_publish_trace(AppContext *app, const char *payload_json);
+void app_emit_runtime_event(AppContext *app, const char *event_name, const char *event_json);
+void app_emit_runtime_log(AppContext *app, int level, const char *message);
 
 #endif

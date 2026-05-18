@@ -30,8 +30,37 @@ long long app_now_ms(void) {
     return (long long)tv.tv_sec * 1000LL + (long long)tv.tv_usec / 1000LL;
 }
 
+void app_emit_runtime_event(AppContext *app, const char *event_name, const char *event_json) {
+    if (app == NULL || !app->runtime_library_mode || app->runtime_event_cb == NULL) {
+        return;
+    }
+
+    app->runtime_event_cb(app->runtime_user_data,
+                          event_name == NULL ? "event" : event_name,
+                          event_json == NULL ? "{}" : event_json);
+}
+
+void app_emit_runtime_log(AppContext *app, int level, const char *message) {
+    if (app == NULL || !app->runtime_library_mode || app->runtime_log_cb == NULL) {
+        return;
+    }
+
+    app->runtime_log_cb(app->runtime_user_data, level, message == NULL ? "" : message);
+}
+
 int app_publish_topic(AppContext *app, const char *topic, const char *payload, uint8_t qos) {
     int32_t res;
+
+    if (app != NULL && app->runtime_library_mode) {
+        char event_json[4096];
+        (void)qos;
+        snprintf(event_json, sizeof(event_json),
+                 "{\"topic\":\"%s\",\"payload\":%s}",
+                 topic == NULL ? "" : topic,
+                 payload == NULL || *payload == '\0' ? "\"\"" : payload);
+        app_emit_runtime_event(app, "mqtt.publish", event_json);
+        return 0;
+    }
 
     if (app == NULL || app->mqtt_handle == NULL || topic == NULL || payload == NULL) {
         return -1;
@@ -88,6 +117,11 @@ int app_post_properties(AppContext *app, const char *params_json) {
         return -1;
     }
 
+    if (app->runtime_library_mode) {
+        app_emit_runtime_event(app, "property.post", params_json);
+        return 0;
+    }
+
     if (sb_init(&payload, 512) != 0) {
         return -1;
     }
@@ -112,6 +146,18 @@ int app_reply_service(AppContext *app, const char *service_path, const char *req
         return -1;
     }
 
+    if (app->runtime_library_mode) {
+        char event_json[4096];
+        snprintf(event_json, sizeof(event_json),
+                 "{\"service\":\"%s\",\"id\":\"%s\",\"code\":%d,\"data\":%s}",
+                 service_path,
+                 reply_id,
+                 code,
+                 (data_json == NULL || *data_json == '\0') ? "{}" : data_json);
+        app_emit_runtime_event(app, "service.reply", event_json);
+        return 0;
+    }
+
     if (sb_init(&payload, 512) != 0) {
         return -1;
     }
@@ -129,6 +175,11 @@ int app_reply_service(AppContext *app, const char *service_path, const char *req
 
 int app_publish_trace(AppContext *app, const char *payload_json) {
     char topic[320];
+    if (app != NULL && app->runtime_library_mode) {
+        app_emit_runtime_event(app, "trace.publish", payload_json == NULL ? "{}" : payload_json);
+        return 0;
+    }
+
     snprintf(topic, sizeof(topic), "/%s/%s/user/trace/data", app->config.product_key, app->config.device_name);
     return app_publish_topic(app, topic, payload_json, 0);
 }

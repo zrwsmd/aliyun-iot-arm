@@ -15,6 +15,8 @@ typedef struct IdeConnectionManager {
     long long last_heartbeat_ms;
     pthread_t heartbeat_thread;
     int heartbeat_thread_running;
+    pthread_mutex_t heartbeat_lock;
+    pthread_cond_t heartbeat_cond;
 } IdeConnectionManager;
 
 int ide_connection_manager_init(IdeConnectionManager *manager, struct AppContext *app);
