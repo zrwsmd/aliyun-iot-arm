@@ -109,24 +109,20 @@ $CommonSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'portfiles\aio
 $CommonSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'src') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
 $CommonSourceFiles = $CommonSourceFiles | Sort-Object -Unique
 
-$SimulatorSourceFiles = @()
-$SimulatorSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'core') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
-$SimulatorSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'external') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
-$SimulatorSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'portfiles\aiot_port') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
-$SimulatorSourceFiles += Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'src\device_config.c')
-$SimulatorSourceFiles += Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'src\json_utils.c')
-$SimulatorSourceFiles = $SimulatorSourceFiles | Sort-Object -Unique
+$IecRuntimeSourceFiles = @()
+$IecRuntimeSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'core') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
+$IecRuntimeSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'external') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
+$IecRuntimeSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'portfiles\aiot_port') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
+$IecRuntimeSourceFiles += Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'src\device_config.c')
+$IecRuntimeSourceFiles += Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'src\json_utils.c')
+$IecRuntimeSourceFiles = $IecRuntimeSourceFiles | Sort-Object -Unique
 
 $DemoMain = Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'demos\iot_ide_demo.c')
-$RuntimeTestMain = Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'demos\iot_ide_runtime_api_test.c')
-$IecRuntimeSimulatorMain = Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'demos\iec_runtime_simulator.c')
-$IecRuntimeMainExample = Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'demos\iec_runtime_libiot_ide_main_example.c')
+$IecRuntimeMain = Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'iec_runtime.c')
 
 $BinaryPath = Join-Path $OutputDir 'iot-ide'
 $SharedLibraryPath = Join-Path $OutputDir 'libiot_ide.so'
-$RuntimeTestPath = Join-Path $OutputDir 'iot_ide_runtime_api_test'
-$IecRuntimeSimulatorPath = Join-Path $OutputDir 'iec_runtime_simulator'
-$IecRuntimeMainExamplePath = Join-Path $OutputDir 'iec_runtime_libiot_ide_main_example'
+$IecRuntimePath = Join-Path $OutputDir 'iec_runtime'
 
 $BaseArgs = @(
     "--sysroot=$Sysroot"
@@ -165,28 +161,16 @@ if ($LASTEXITCODE -ne 0) {
     throw 'ARM64 libiot_ide.so build failed.'
 }
 
-& $Gcc @($BaseArgs + @($RuntimeTestMain, '-L', $OutputDir, "-Wl,-rpath,`$ORIGIN", '-liot_ide', '-o', $RuntimeTestPath) + $LinkArgs)
+& $Gcc @($BaseArgs + $IecRuntimeSourceFiles + @($IecRuntimeMain, '-L', $OutputDir, "-Wl,-rpath,`$ORIGIN", '-liot_ide', '-o', $IecRuntimePath) + $LinkArgs)
 if ($LASTEXITCODE -ne 0) {
-    throw 'ARM64 runtime API test build failed.'
-}
-
-& $Gcc @($BaseArgs + $SimulatorSourceFiles + @($IecRuntimeSimulatorMain, '-L', $OutputDir, "-Wl,-rpath,`$ORIGIN", '-liot_ide', '-o', $IecRuntimeSimulatorPath) + $LinkArgs)
-if ($LASTEXITCODE -ne 0) {
-    throw 'ARM64 iec_runtime_simulator build failed.'
-}
-
-& $Gcc @($BaseArgs + @($IecRuntimeMainExample, '-L', $OutputDir, "-Wl,-rpath,`$ORIGIN", '-liot_ide', '-o', $IecRuntimeMainExamplePath) + $LinkArgs)
-if ($LASTEXITCODE -ne 0) {
-    throw 'ARM64 iec_runtime libiot_ide main example build failed.'
+    throw 'ARM64 iec_runtime build failed.'
 }
 
 Write-Host ''
 Write-Host 'ARM64 builds completed:'
 Write-Host "  $BinaryPath"
 Write-Host "  $SharedLibraryPath"
-Write-Host "  $RuntimeTestPath"
-Write-Host "  $IecRuntimeSimulatorPath"
-Write-Host "  $IecRuntimeMainExamplePath"
+Write-Host "  $IecRuntimePath"
 
 if (Test-Path -LiteralPath $Readelf) {
     Write-Host ''
@@ -196,14 +180,8 @@ if (Test-Path -LiteralPath $Readelf) {
     Write-Host 'libiot_ide.so architecture:'
     & $Readelf -h $SharedLibraryPath | Select-String 'Machine|Class'
     Write-Host ''
-    Write-Host 'iot_ide_runtime_api_test architecture:'
-    & $Readelf -h $RuntimeTestPath | Select-String 'Machine|Class'
-    Write-Host ''
-    Write-Host 'iec_runtime_simulator architecture:'
-    & $Readelf -h $IecRuntimeSimulatorPath | Select-String 'Machine|Class'
-    Write-Host ''
-    Write-Host 'iec_runtime_libiot_ide_main_example architecture:'
-    & $Readelf -h $IecRuntimeMainExamplePath | Select-String 'Machine|Class'
+    Write-Host 'iec_runtime architecture:'
+    & $Readelf -h $IecRuntimePath | Select-String 'Machine|Class'
 }
 
 

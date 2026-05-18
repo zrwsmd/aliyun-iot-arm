@@ -27,11 +27,12 @@ Important:
 ## Files
 
 - `device_id.example.json`: template for local device credentials and instance config
+- `iec_runtime.c`: production C entry for `iec_runtime` to connect Aliyun, call `libiot_ide.so`, and publish callbacks
 - `demos/iot_ide_demo.c`: program entry
 - `src/`: formal device-side C modules
 - `scripts/build-arm64-cross-windows.ps1`: Windows cross-build script for your ARM64 toolchain
 - `docs/buildroot_service.md`: Buildroot init service setup for auto-starting `iot-ide`
-- `docs/iot_ide_dynamic_library_integration.md`: C API dynamic library integration notes for `iec_runtime`
+- `docs/four_party_call_flow.md`: flow notes for local IDE, Aliyun, `iec_runtime`, and `libiot_ide.so`
 
 ## Build on Windows for ARM64
 
@@ -49,13 +50,11 @@ The output binary will be generated at:
 build\arm64-cross\iot-ide
 ```
 
-The same build also generates the dynamic library and runtime API test binary:
+The same build also generates the dynamic library and `iec_runtime` entry:
 
 ```text
 build\arm64-cross\libiot_ide.so
-build\arm64-cross\iot_ide_runtime_api_test
-build\arm64-cross\iec_runtime_simulator
-build\arm64-cross\iec_runtime_libiot_ide_main_example
+build\arm64-cross\iec_runtime
 ```
 
 ## Run on the Buildroot target
