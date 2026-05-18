@@ -109,12 +109,22 @@ $CommonSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'portfiles\aio
 $CommonSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'src') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
 $CommonSourceFiles = $CommonSourceFiles | Sort-Object -Unique
 
+$SimulatorSourceFiles = @()
+$SimulatorSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'core') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
+$SimulatorSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'external') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
+$SimulatorSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'portfiles\aiot_port') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
+$SimulatorSourceFiles += Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'src\device_config.c')
+$SimulatorSourceFiles += Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'src\json_utils.c')
+$SimulatorSourceFiles = $SimulatorSourceFiles | Sort-Object -Unique
+
 $DemoMain = Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'demos\iot_ide_demo.c')
 $RuntimeTestMain = Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'demos\iot_ide_runtime_api_test.c')
+$IecRuntimeSimulatorMain = Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'demos\iec_runtime_simulator.c')
 
 $BinaryPath = Join-Path $OutputDir 'iot-ide'
 $SharedLibraryPath = Join-Path $OutputDir 'libiot_ide.so'
 $RuntimeTestPath = Join-Path $OutputDir 'iot_ide_runtime_api_test'
+$IecRuntimeSimulatorPath = Join-Path $OutputDir 'iec_runtime_simulator'
 
 $BaseArgs = @(
     "--sysroot=$Sysroot"
@@ -158,11 +168,17 @@ if ($LASTEXITCODE -ne 0) {
     throw 'ARM64 runtime API test build failed.'
 }
 
+& $Gcc @($BaseArgs + $SimulatorSourceFiles + @($IecRuntimeSimulatorMain, '-L', $OutputDir, "-Wl,-rpath,`$ORIGIN", '-liot_ide', '-o', $IecRuntimeSimulatorPath) + $LinkArgs)
+if ($LASTEXITCODE -ne 0) {
+    throw 'ARM64 iec_runtime_simulator build failed.'
+}
+
 Write-Host ''
 Write-Host 'ARM64 builds completed:'
 Write-Host "  $BinaryPath"
 Write-Host "  $SharedLibraryPath"
 Write-Host "  $RuntimeTestPath"
+Write-Host "  $IecRuntimeSimulatorPath"
 
 if (Test-Path -LiteralPath $Readelf) {
     Write-Host ''
@@ -174,6 +190,9 @@ if (Test-Path -LiteralPath $Readelf) {
     Write-Host ''
     Write-Host 'iot_ide_runtime_api_test architecture:'
     & $Readelf -h $RuntimeTestPath | Select-String 'Machine|Class'
+    Write-Host ''
+    Write-Host 'iec_runtime_simulator architecture:'
+    & $Readelf -h $IecRuntimeSimulatorPath | Select-String 'Machine|Class'
 }
 
 

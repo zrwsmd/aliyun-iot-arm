@@ -54,6 +54,7 @@ The same build also generates the dynamic library and runtime API test binary:
 ```text
 build\arm64-cross\libiot_ide.so
 build\arm64-cross\iot_ide_runtime_api_test
+build\arm64-cross\iec_runtime_simulator
 ```
 
 ## Run on the Buildroot target
