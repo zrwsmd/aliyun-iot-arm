@@ -1,9 +1,11 @@
 #include "iot_ide_gateway_api.h"
 #include "iot_ide_runtime_api.h"
 
+#include <stdarg.h>
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 typedef struct IecRuntime {
@@ -13,6 +15,47 @@ typedef struct IecRuntime {
 } IecRuntime;
 
 static IecRuntime *g_runtime = NULL;
+
+static void runtime_format_time(char *buffer, size_t buffer_size) {
+    time_t now;
+    struct tm tm_value;
+
+    if (buffer == NULL || buffer_size == 0) {
+        return;
+    }
+
+    now = time(NULL);
+    if (localtime_r(&now, &tm_value) == NULL) {
+        snprintf(buffer, buffer_size, "unknown-time");
+        return;
+    }
+
+    strftime(buffer, buffer_size, "%Y-%m-%d %H:%M:%S", &tm_value);
+}
+
+static void runtime_log_stdout(const char *fmt, ...) {
+    char time_text[32];
+    va_list args;
+
+    runtime_format_time(time_text, sizeof(time_text));
+    printf("[%s] ", time_text);
+
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+}
+
+static void runtime_log_stderr(const char *fmt, ...) {
+    char time_text[32];
+    va_list args;
+
+    runtime_format_time(time_text, sizeof(time_text));
+    fprintf(stderr, "[%s] ", time_text);
+
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+}
 
 /*
  * 生产集成入口。
@@ -82,9 +125,9 @@ static void runtime_reply_error(IotIdeGateway *gateway,
 static void runtime_on_iot_ide_event(void *user_data, const char *event_name, const char *event_json) {
     IecRuntime *runtime = (IecRuntime *)user_data;
 
-    printf("[iot_ide event] %s %s\n",
-           event_name == NULL ? "" : event_name,
-           event_json == NULL ? "" : event_json);
+    runtime_log_stdout("[iot_ide event] %s %s\n",
+                       event_name == NULL ? "" : event_name,
+                       event_json == NULL ? "" : event_json);
 
     if (runtime == NULL || runtime->gateway == NULL || event_name == NULL) {
         return;
@@ -107,7 +150,7 @@ static void runtime_on_iot_ide_event(void *user_data, const char *event_name, co
  */
 static void runtime_on_iot_ide_log(void *user_data, int level, const char *message) {
     (void)user_data;
-    printf("[iot_ide log:%d] %s\n", level, message == NULL ? "" : message);
+    runtime_log_stdout("[iot_ide log:%d] %s\n", level, message == NULL ? "" : message);
 }
 
 /*
@@ -118,7 +161,7 @@ static void runtime_on_iot_ide_log(void *user_data, int level, const char *messa
  */
 static void runtime_on_gateway_log(void *user_data, int level, const char *message) {
     (void)user_data;
-    printf("[gateway log:%d] %s\n", level, message == NULL ? "" : message);
+    runtime_log_stdout("[gateway log:%d] %s\n", level, message == NULL ? "" : message);
 }
 
 /*
@@ -181,7 +224,7 @@ static void runtime_on_service(void *user_data,
         return;
     }
 
-    printf("service response service=%s rc=%d data=%s\n", service_name, rc, response);
+    runtime_log_stdout("service response service=%s rc=%d data=%s\n", service_name, rc, response);
     (void)iot_ide_gateway_reply_service(gateway, service_name, request_id, 200, response);
 }
 
@@ -233,7 +276,7 @@ int main(int argc, char **argv) {
     gateway_options.user_data = &runtime;
 
     if (iot_ide_gateway_create(&gateway_options, &runtime.gateway) != IOT_IDE_GATEWAY_OK) {
-        fprintf(stderr, "iot_ide_gateway_create failed\n");
+        runtime_log_stderr("iot_ide_gateway_create failed\n");
         return 1;
     }
 
@@ -250,7 +293,7 @@ int main(int argc, char **argv) {
     iot_ide_options.user_data = &runtime;
 
     if (iot_ide_runtime_create(&iot_ide_options, &runtime.iot_ide) != IOT_IDE_RUNTIME_OK) {
-        fprintf(stderr, "iot_ide_runtime_create failed\n");
+        runtime_log_stderr("iot_ide_runtime_create failed\n");
         iot_ide_gateway_destroy(runtime.gateway);
         return 1;
     }
@@ -263,11 +306,11 @@ int main(int argc, char **argv) {
                                           mqtt_host,
                                           sizeof(mqtt_host));
 
-    printf("=== iec_runtime ===\n");
-    printf("config: %s\n", config_path);
-    printf("productKey: %s\n", product_key);
-    printf("deviceName: %s\n", device_name);
-    printf("mqttHost: %s\n", mqtt_host);
+    runtime_log_stdout("=== iec_runtime ===\n");
+    runtime_log_stdout("config: %s\n", config_path);
+    runtime_log_stdout("productKey: %s\n", product_key);
+    runtime_log_stdout("deviceName: %s\n", device_name);
+    runtime_log_stdout("mqttHost: %s\n", mqtt_host);
 
     /*
      * iec_runtime.c -> libiot_ide_gateway.so -> 阿里云
@@ -276,7 +319,7 @@ int main(int argc, char **argv) {
      * /sys/{productKey}/{deviceName}/thing/service/#
      */
     if (iot_ide_gateway_start(runtime.gateway) != IOT_IDE_GATEWAY_OK) {
-        fprintf(stderr, "iot_ide_gateway_start failed\n");
+        runtime_log_stderr("iot_ide_gateway_start failed\n");
         iot_ide_runtime_destroy(runtime.iot_ide);
         iot_ide_gateway_destroy(runtime.gateway);
         return 1;
@@ -294,6 +337,6 @@ int main(int argc, char **argv) {
     iot_ide_gateway_stop(runtime.gateway);
     iot_ide_runtime_destroy(runtime.iot_ide);
     iot_ide_gateway_destroy(runtime.gateway);
-    printf("iec_runtime exit\n");
+    runtime_log_stdout("iec_runtime exit\n");
     return 0;
 }

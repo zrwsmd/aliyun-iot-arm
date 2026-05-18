@@ -34,6 +34,23 @@ struct IotIdeGateway {
     void *user_data;
 };
 
+static void gateway_format_time(char *buffer, size_t buffer_size) {
+    time_t now;
+    struct tm tm_value;
+
+    if (buffer == NULL || buffer_size == 0) {
+        return;
+    }
+
+    now = time(NULL);
+    if (localtime_r(&now, &tm_value) == NULL) {
+        snprintf(buffer, buffer_size, "unknown-time");
+        return;
+    }
+
+    strftime(buffer, buffer_size, "%Y-%m-%d %H:%M:%S", &tm_value);
+}
+
 static void gateway_emit_log(IotIdeGateway *gateway, int level, const char *message) {
     if (gateway != NULL && gateway->callbacks.on_log != NULL) {
         gateway->callbacks.on_log(gateway->user_data, level, message == NULL ? "" : message);
@@ -41,7 +58,9 @@ static void gateway_emit_log(IotIdeGateway *gateway, int level, const char *mess
     }
 
     if (message != NULL && message[0] != '\0') {
-        fprintf(stderr, "%s\n", message);
+        char time_text[32];
+        gateway_format_time(time_text, sizeof(time_text));
+        fprintf(stderr, "[%s] %s\n", time_text, message);
     }
 }
 
@@ -60,9 +79,11 @@ static void gateway_emit_logf(IotIdeGateway *gateway, int level, const char *fmt
 }
 
 static int32_t gateway_state_logcb(int32_t code, char *message) {
+    char time_text[32];
     (void)code;
     if (message != NULL) {
-        printf("%s", message);
+        gateway_format_time(time_text, sizeof(time_text));
+        printf("[%s] %s", time_text, message);
     }
     return 0;
 }
