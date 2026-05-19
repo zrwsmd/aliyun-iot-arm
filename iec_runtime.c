@@ -71,8 +71,16 @@ static void runtime_log_stderr(const char *fmt, ...) {
  * libiot_ide.so 负责 IDE 业务逻辑：连接锁、心跳、断开、部署、启动、
  * 连接快照。
  *
- * iec_runtime.c 只做胶水层：把 gateway 收到的阿里云服务分发给
- * libiot_ide.so，再把 libiot_ide.so 产生的事件交给 gateway 上报阿里云。
+ * iec_runtime.c 只做胶水层：两个动态库不直接互相调用，所有业务流转都经过
+ * iec_runtime.c 中转。
+ *
+ * 下行服务请求方向：
+ * 阿里云 -> libiot_ide_gateway.so -> 回调 iec_runtime.c 的 runtime_on_service()
+ *        -> iec_runtime.c 调用 libiot_ide.so 的业务 API。
+ *
+ * 上行业务事件方向：
+ * libiot_ide.so -> 回调 iec_runtime.c 的 runtime_on_iot_ide_event()
+ *               -> iec_runtime.c 调用 libiot_ide_gateway.so 上报阿里云。
  */
 
 /*
@@ -109,16 +117,21 @@ static void runtime_reply_error(IotIdeGateway *gateway,
 }
 
 /*
- * libiot_ide.so -> iec_runtime.c -> libiot_ide_gateway.so -> 阿里云
+ * libiot_ide.so -> 回调 iec_runtime.c -> libiot_ide_gateway.so -> 阿里云
  *
- * 这是业务动态库的事件回调。libiot_ide.so 内部状态变化时会调用这里，
- * 例如 IDE 连接成功、心跳更新、断开连接、部署状态变化。
+ * 谁回调谁：
+ * libiot_ide.so 回调 iec_runtime.c 里的 runtime_on_iot_ide_event()。
+ *
+ * 什么时候回调：
+ * libiot_ide.so 内部状态变化时会调用这里，例如 IDE 连接成功、心跳更新、
+ * 断开连接、部署状态变化。
  *
  * event_name 表示事件类型：
  * - property.post: 需要上报物模型属性到阿里云
  * - trace.publish: 需要发布 trace 数据到阿里云
  * - service.reply: 预留的集中服务回复路径
  *
+ * 后续怎么走：
  * iec_runtime.c 不直接发 MQTT，而是把事件转给 gateway，由
  * libiot_ide_gateway.so 负责真正发布到阿里云。
  */
@@ -134,10 +147,15 @@ static void runtime_on_iot_ide_event(void *user_data, const char *event_name, co
     }
 
     /*
-     * property.post -> gateway reports thing properties to Aliyun.
-     * trace.publish -> gateway publishes trace data to Aliyun.
-     * service.reply -> gateway replies to Aliyun service calls if a future
-     *                  libiot_ide.so API emits centralized replies.
+     * 这里是 iec_runtime.c 主动调用 libiot_ide_gateway.so。
+     *
+     * 注意：不是 libiot_ide.so 直接调用 libiot_ide_gateway.so。
+     * libiot_ide.so 只负责把事件回调给 iec_runtime.c，真正上报阿里云
+     * 是由 iec_runtime.c 调用 gateway 完成的。
+     *
+     * property.post  -> gateway 上报物模型属性到阿里云。
+     * trace.publish  -> gateway 发布 trace 数据到阿里云。
+     * service.reply  -> 预留的集中服务回复路径。
      */
     (void)iot_ide_gateway_forward_event(runtime->gateway, event_name, event_json);
 }
@@ -165,10 +183,17 @@ static void runtime_on_gateway_log(void *user_data, int level, const char *messa
 }
 
 /*
- * 阿里云 -> libiot_ide_gateway.so -> iec_runtime.c -> libiot_ide.so
- * libiot_ide.so -> iec_runtime.c -> libiot_ide_gateway.so -> 阿里云
+ * 阿里云 -> libiot_ide_gateway.so -> 回调 iec_runtime.c -> libiot_ide.so
+ * libiot_ide.so -> 回调 iec_runtime.c -> libiot_ide_gateway.so -> 阿里云
  *
  * 这是最关键的服务分发回调。
+ *
+ * 谁回调谁：
+ * libiot_ide_gateway.so 回调 iec_runtime.c 里的 runtime_on_service()。
+ *
+ * 什么时候回调：
+ * 阿里云下发 requestConnect、ideHeartbeat、deployProject、startProject
+ * 等服务时，gateway 收到 MQTT 消息并解析完成后，会调用这里。
  *
  * libiot_ide_gateway.so 已经完成了：
  * - 接收阿里云 MQTT 服务下发
@@ -264,10 +289,17 @@ int main(int argc, char **argv) {
     signal(SIGTERM, runtime_handle_signal);
 
     /*
-     * iec_runtime.c -> libiot_ide_gateway.so
+     * 注册 gateway 服务回调：
+     * iec_runtime.c 把 runtime_on_service() 的函数地址交给 libiot_ide_gateway.so。
      *
      * 创建 gateway 前先注册服务回调。阿里云下发 requestConnect、
      * deployProject、startProject 等服务时，gateway 会回调 runtime_on_service。
+     *
+     * 这一行不是立即调用 runtime_on_service()，只是告诉 gateway：
+     * 以后你收到阿里云下发的服务请求后，就回调这个函数。
+     *
+     * 真正触发时的方向：
+     * 阿里云 -> libiot_ide_gateway.so -> runtime_on_service() -> libiot_ide.so
      */
     gateway_callbacks.on_service = runtime_on_service;
     gateway_callbacks.on_log = runtime_on_gateway_log;
@@ -281,10 +313,15 @@ int main(int argc, char **argv) {
     }
 
     /*
-     * iec_runtime.c -> libiot_ide.so
+     * 注册业务事件回调：
+     * iec_runtime.c 把 runtime_on_iot_ide_event() 的函数地址交给 libiot_ide.so。
      *
-     * 创建业务动态库前先注册事件回调。libiot_ide.so 产生 property.post
-     * 等事件时，会回调 runtime_on_iot_ide_event，再由 gateway 上报阿里云。
+     * 这一行不是立即调用 runtime_on_iot_ide_event()，只是告诉业务动态库：
+     * 以后你产生 property.post、deployProject.response、startProject.response
+     * 等事件后，就回调这个函数。
+     *
+     * 真正触发时的方向：
+     * libiot_ide.so -> runtime_on_iot_ide_event() -> libiot_ide_gateway.so -> 阿里云
      */
     iot_ide_callbacks.on_event = runtime_on_iot_ide_event;
     iot_ide_callbacks.on_log = runtime_on_iot_ide_log;
