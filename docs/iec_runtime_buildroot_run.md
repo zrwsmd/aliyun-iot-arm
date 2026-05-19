@@ -182,3 +182,16 @@ iec_runtime.c
 这两个头文件是编译时用的，运行时目标机目录里不一定需要。
 
 `iec_runtime.c` 是生产级集成参考代码，只保留两层库之间的胶水逻辑：收到 gateway 服务回调后调用 `libiot_ide.so`，收到 `libiot_ide.so` 事件后交给 gateway 上报阿里云。
+
+## 9. 给同事的交付文件总结
+
+给同事集成时建议提供 6 个文件：
+
+```text
+libiot_ide.so                  IDE 业务功能动态库：连接、心跳、断开、部署、启动等
+libiot_ide_gateway.so          阿里云通信动态库：连接阿里云、订阅服务、解析下发、属性上报、服务回复
+include/iot_ide_runtime_api.h  libiot_ide.so 的 C 接口头文件
+include/iot_ide_gateway_api.h  libiot_ide_gateway.so 的 C 接口头文件
+iec_runtime.c                  生产级集成参考代码，同事可参考/复制主流程
+device_id.json                 阿里云设备身份配置
+```
