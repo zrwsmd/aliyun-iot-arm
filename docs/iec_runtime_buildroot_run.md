@@ -106,7 +106,7 @@ service response service=requestConnect rc=0 data={"success":1,"message":"connec
 这表示：
 
 ```text
-本地 IDE -> 阿里云 -> libiot_ide_gateway.so -> iec_runtime -> libiot_ide.so -> libiot_ide_gateway.so -> 阿里云
+本地 IDE -> 阿里云 -> libiot_ide_gateway.so -> iec_runtime -> libiot_ide.so -> iec_runtime -> libiot_ide_gateway.so -> 阿里云
 ```
 
 连接链路已经跑通。
