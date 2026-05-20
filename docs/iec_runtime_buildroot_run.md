@@ -195,3 +195,59 @@ include/libiot_ide_gateway.h   libiot_ide_gateway.so 的 C 接口头文件
 iec_runtime.c                  生产级集成参考代码，同事可参考/复制主流程
 device_id.json                 阿里云设备身份配置
 ```
+
+## 10. iec_runtime.c 集成时哪些需要改
+
+`iec_runtime.c` 可以直接编译运行，用于验证阿里云链路和两个动态库的调用链路。但同事集成到真实 `iec_runtime` 进程时，不建议不加判断地整文件照搬，需要按他的进程结构做少量适配。
+
+基本不用改的核心逻辑：
+
+```text
+创建 gateway：iot_ide_gateway_create()
+启动 gateway：iot_ide_gateway_start()
+创建业务库：libiot_ide_create()
+注册 gateway on_service 回调
+注册 libiot_ide on_event/on_log 回调
+on_service 里分发 requestConnect/requestDisconnect/ideHeartbeat/deployProject/startProject
+on_event 里把 libiot_ide 事件转给 gateway 上报阿里云
+退出时 stop/destroy
+```
+
+这条主链路建议保留：
+
+```text
+阿里云 -> libiot_ide_gateway.so -> iec_runtime.c -> libiot_ide.so
+libiot_ide.so -> iec_runtime.c -> libiot_ide_gateway.so -> 阿里云
+```
+
+同事大概率需要按真实项目修改的地方：
+
+```text
+1. main 函数集成方式
+   如果真实 iec_runtime 已经有 main()、初始化流程、主循环和退出逻辑，
+   需要把当前文件里的初始化、启动、清理逻辑合并进去，而不是再复制一个 main()。
+
+2. 配置文件路径
+   当前默认从命令行读取 device_id.json：
+   const char *config_path = argc > 1 ? argv[1] : "./device_id.json";
+   真实项目可以改成固定路径，或从自己的配置系统读取。
+
+3. 工作目录
+   当前是：
+   iot_ide_options.work_dir = ".";
+   真实设备上建议改成明确目录，例如 /usr/iec-runtime 或项目实际工作目录。
+
+4. 日志系统
+   当前直接输出到 stdout/stderr。
+   如果真实 iec_runtime 有自己的日志模块，需要替换成项目日志接口。
+
+5. 主循环和退出信号
+   当前使用 SIGINT/SIGTERM + while sleep 保持运行。
+   如果真实 iec_runtime 已有事件循环、线程模型或守护进程框架，需要并入现有框架。
+
+6. 部署/启动与真实业务衔接
+   如果部署和启动完全由 libiot_ide.so 处理，可以保持当前分发逻辑。
+   如果还需要通知 PLC runtime、任务调度器或进程管理器，需要在 deployProject/startProject 分支前后加真实业务逻辑。
+```
+
+一句话：当前 `iec_runtime.c` 可以直接用于跑通验证；正式接入同事项目时，建议保留回调注册和服务分发主链路，主要改进程入口、配置路径、工作目录、日志、主循环退出方式，以及部署/启动和真实业务的衔接。
