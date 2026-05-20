@@ -235,7 +235,9 @@ libiot_ide.so -> iec_runtime.c -> libiot_ide_gateway.so -> 阿里云
 3. 工作目录
    当前是：
    iot_ide_options.work_dir = ".";
-   真实设备上建议改成明确目录，例如 /usr/iec-runtime 或项目实际工作目录。
+   目前该字段只是保存到 libiot_ide.so 内部上下文，作为后续扩展预留。
+   现有部署/启动实际使用阿里云下发参数里的 deployPath/projectName，
+   不会自动以 work_dir 作为部署或启动基准目录。
 
 4. 日志系统
    当前直接输出到 stdout/stderr。

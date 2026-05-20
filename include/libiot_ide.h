@@ -94,8 +94,9 @@ typedef struct LibIotIdeOptions {
     /*
      * 工作目录。
      *
-     * 部署、启动等业务如果需要相对路径，会以这个目录作为参考。
-     * 生产环境建议传入明确目录，例如 /usr/iec-runtime 或项目实际工作目录。
+     * 当前实现会保存该值到内部上下文，作为后续扩展预留字段。
+     * 现有 deployProject/startProject 逻辑实际使用的是 params_json 里的
+     * deployPath/projectName，不会自动以 work_dir 作为部署或启动基准目录。
      */
     const char *work_dir;
 
