@@ -109,7 +109,7 @@ $SdkSourceFiles += Get-ChildItem -Path (Join-Path $ProjectRoot 'portfiles\aiot_p
 $SdkSourceFiles = $SdkSourceFiles | Sort-Object -Unique
 
 $SrcSourceFiles = Get-ChildItem -Path (Join-Path $ProjectRoot 'src') -Recurse -Filter *.c | ForEach-Object { $_.FullName }
-$SrcWithoutGatewaySourceFiles = $SrcSourceFiles | Where-Object { [System.IO.Path]::GetFileName($_) -ne 'iot_ide_gateway_api.c' }
+$SrcWithoutGatewaySourceFiles = $SrcSourceFiles | Where-Object { [System.IO.Path]::GetFileName($_) -ne 'libiot_ide_gateway.c' }
 
 $AppSourceFiles = @($SdkSourceFiles + $SrcWithoutGatewaySourceFiles) | Sort-Object -Unique
 $RuntimeLibrarySourceFiles = @($SdkSourceFiles + $SrcWithoutGatewaySourceFiles) | Sort-Object -Unique
@@ -117,7 +117,7 @@ $GatewayLibrarySourceFiles = @()
 $GatewayLibrarySourceFiles += $SdkSourceFiles
 $GatewayLibrarySourceFiles += Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'src\device_config.c')
 $GatewayLibrarySourceFiles += Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'src\json_utils.c')
-$GatewayLibrarySourceFiles += Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'src\iot_ide_gateway_api.c')
+$GatewayLibrarySourceFiles += Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'src\libiot_ide_gateway.c')
 $GatewayLibrarySourceFiles = $GatewayLibrarySourceFiles | Sort-Object -Unique
 
 $DemoMain = Resolve-FullPath -PathValue (Join-Path $ProjectRoot 'demos\iot_ide_demo.c')

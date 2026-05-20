@@ -1,4 +1,4 @@
-#include "iot_ide_gateway_api.h"
+#include "libiot_ide_gateway.h"
 
 #include "aiot_mqtt_api.h"
 #include "aiot_state_api.h"

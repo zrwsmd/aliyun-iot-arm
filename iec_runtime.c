@@ -1,5 +1,5 @@
-#include "iot_ide_gateway_api.h"
-#include "iot_ide_runtime_api.h"
+#include "libiot_ide_gateway.h"
+#include "libiot_ide.h"
 
 #include <stdarg.h>
 #include <signal.h>

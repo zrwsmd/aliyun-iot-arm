@@ -38,25 +38,25 @@ connection snapshot
 IDE 业务动态库对外头文件：
 
 ```text
-include/iot_ide_runtime_api.h
+include/libiot_ide.h
 ```
 
 IDE 业务动态库接口实现：
 
 ```text
-src/iot_ide_runtime_api.c
+src/libiot_ide.c
 ```
 
 阿里云通信动态库对外头文件：
 
 ```text
-include/iot_ide_gateway_api.h
+include/libiot_ide_gateway.h
 ```
 
 阿里云通信动态库接口实现：
 
 ```text
-src/iot_ide_gateway_api.c
+src/libiot_ide_gateway.c
 ```
 
 生产集成参考入口：
@@ -120,7 +120,7 @@ src/**/*.c                  当前项目业务源码
 `libiot_ide.so` 使用当前项目业务源码，排除 gateway 接口实现：
 
 ```text
-src/iot_ide_runtime_api.c
+src/libiot_ide.c
 src/ide_connection_manager.c
 src/deploy_manager.c
 src/start_manager.c
@@ -137,7 +137,7 @@ external/**/*.c
 portfiles/aiot_port/**/*.c
 src/device_config.c
 src/json_utils.c
-src/iot_ide_gateway_api.c
+src/libiot_ide_gateway.c
 ```
 
 `iec_runtime` 只编译：
@@ -235,8 +235,8 @@ iec_runtime architecture:
 编译同事自己的 `iec_runtime` 时，需要：
 
 ```text
-include/iot_ide_runtime_api.h
-include/iot_ide_gateway_api.h
+include/libiot_ide.h
+include/libiot_ide_gateway.h
 libiot_ide.so
 libiot_ide_gateway.so
 iec_runtime.c

@@ -174,8 +174,8 @@ service response service=requestDisconnect rc=0 data={"success":1,"message":"dis
 编译集成时还需要给同事：
 
 ```text
-include/iot_ide_runtime_api.h
-include/iot_ide_gateway_api.h
+include/libiot_ide.h
+include/libiot_ide_gateway.h
 iec_runtime.c
 ```
 
@@ -190,8 +190,8 @@ iec_runtime.c
 ```text
 libiot_ide.so                  IDE 业务功能动态库：连接、心跳、断开、部署、启动等
 libiot_ide_gateway.so          阿里云通信动态库：连接阿里云、订阅服务、解析下发、属性上报、服务回复
-include/iot_ide_runtime_api.h  libiot_ide.so 的 C 接口头文件
-include/iot_ide_gateway_api.h  libiot_ide_gateway.so 的 C 接口头文件
+include/libiot_ide.h           libiot_ide.so 的 C 接口头文件
+include/libiot_ide_gateway.h   libiot_ide_gateway.so 的 C 接口头文件
 iec_runtime.c                  生产级集成参考代码，同事可参考/复制主流程
 device_id.json                 阿里云设备身份配置
 ```

@@ -1,4 +1,4 @@
-#include "iot_ide_runtime_api.h"
+#include "libiot_ide.h"
 
 #include "app_context.h"
 #include "iot_ide_app.h"

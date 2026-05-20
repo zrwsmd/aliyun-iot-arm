@@ -28,8 +28,8 @@ Important:
 
 - `device_id.example.json`: template for local device credentials and instance config
 - `iec_runtime.c`: production C entry that glues `libiot_ide_gateway.so` service callbacks to `libiot_ide.so`
-- `include/iot_ide_runtime_api.h`: C API for the IDE business dynamic library
-- `include/iot_ide_gateway_api.h`: C API for the Aliyun gateway dynamic library
+- `include/libiot_ide.h`: C API for the IDE business dynamic library
+- `include/libiot_ide_gateway.h`: C API for the Aliyun gateway dynamic library
 - `demos/iot_ide_demo.c`: program entry
 - `src/`: formal device-side C modules
 - `scripts/build-arm64-cross-windows.ps1`: Windows cross-build script for your ARM64 toolchain

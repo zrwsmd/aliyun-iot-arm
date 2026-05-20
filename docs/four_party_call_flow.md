@@ -159,6 +159,6 @@ libiot_ide.so event callback -> 调 gateway 上报阿里云
 同事需要编译集成的头文件：
 
 ```text
-include/iot_ide_gateway_api.h
-include/iot_ide_runtime_api.h
+include/libiot_ide_gateway.h
+include/libiot_ide.h
 ```

@@ -1,5 +1,5 @@
-#ifndef IOT_IDE_GATEWAY_API_H
-#define IOT_IDE_GATEWAY_API_H
+#ifndef LIBIOT_IDE_GATEWAY_H
+#define LIBIOT_IDE_GATEWAY_H
 
 #include <stddef.h>
 
