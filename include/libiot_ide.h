@@ -7,13 +7,13 @@
 extern "C" {
 #endif
 
-#define IOT_IDE_RUNTIME_API_VERSION 1
+#define LIBIOT_IDE_API_VERSION 1
 
-#define IOT_IDE_RUNTIME_OK 0
-#define IOT_IDE_RUNTIME_ERR_INVALID_ARGUMENT -1
-#define IOT_IDE_RUNTIME_ERR_NO_MEMORY -2
-#define IOT_IDE_RUNTIME_ERR_INTERNAL -3
-#define IOT_IDE_RUNTIME_ERR_NOT_ACTIVE_CLIENT -4
+#define LIBIOT_IDE_OK 0
+#define LIBIOT_IDE_ERR_INVALID_ARGUMENT -1
+#define LIBIOT_IDE_ERR_NO_MEMORY -2
+#define LIBIOT_IDE_ERR_INTERNAL -3
+#define LIBIOT_IDE_ERR_NOT_ACTIVE_CLIENT -4
 
 /*
  * libiot_ide.so 内部运行对象句柄。
@@ -24,32 +24,32 @@ extern "C" {
  *
  * 使用方不需要知道结构体内部字段，也不能直接访问内部字段。
  */
-typedef struct IotIdeRuntime IotIdeRuntime;
+typedef struct LibIotIde LibIotIde;
 
 /*
  * libiot_ide.so -> iec_runtime 的日志级别。
  *
- * 这些级别会通过 IotIdeRuntimeCallbacks.on_log 回调给 iec_runtime，
+ * 这些级别会通过 LibIotIdeCallbacks.on_log 回调给 iec_runtime，
  * 由 iec_runtime 决定打印到控制台、文件或自己的日志系统。
  */
-typedef enum IotIdeRuntimeLogLevel {
+typedef enum LibIotIdeLogLevel {
     IOT_IDE_LOG_DEBUG = 0,
     IOT_IDE_LOG_INFO = 1,
     IOT_IDE_LOG_WARN = 2,
     IOT_IDE_LOG_ERROR = 3
-} IotIdeRuntimeLogLevel;
+} LibIotIdeLogLevel;
 
 /*
  * libiot_ide.so 回调 iec_runtime 的函数集合。
  *
  * 注册方向：
  * iec_runtime 在调用 libiot_ide_create() 前填写这个结构体，
- * 然后通过 IotIdeRuntimeOptions.callbacks 交给 libiot_ide.so。
+ * 然后通过 LibIotIdeOptions.callbacks 交给 libiot_ide.so。
  *
  * 触发方向：
  * libiot_ide.so -> 回调 iec_runtime。
  */
-typedef struct IotIdeRuntimeCallbacks {
+typedef struct LibIotIdeCallbacks {
     /*
      * 业务事件回调。
      *
@@ -82,7 +82,7 @@ typedef struct IotIdeRuntimeCallbacks {
      * 把 libiot_ide.so 内部日志交给 iec_runtime，方便统一接入现场日志系统。
      */
     void (*on_log)(void *user_data, int level, const char *message);
-} IotIdeRuntimeCallbacks;
+} LibIotIdeCallbacks;
 
 /*
  * 创建 libiot_ide.so 运行对象时传入的配置。
@@ -90,7 +90,7 @@ typedef struct IotIdeRuntimeCallbacks {
  * 调用方向：
  * iec_runtime -> libiot_ide.so。
  */
-typedef struct IotIdeRuntimeOptions {
+typedef struct LibIotIdeOptions {
     /*
      * 工作目录。
      *
@@ -105,7 +105,7 @@ typedef struct IotIdeRuntimeOptions {
      * libiot_ide.so 后续通过这里面的 on_event/on_log 回调 iec_runtime。
      * 可以为 NULL，为 NULL 时只是不接收事件/日志回调。
      */
-    const IotIdeRuntimeCallbacks *callbacks;
+    const LibIotIdeCallbacks *callbacks;
 
     /*
      * 用户上下文指针。
@@ -114,7 +114,7 @@ typedef struct IotIdeRuntimeOptions {
      * iec_runtime 通常传入自己的运行时结构体指针，方便回调里继续访问 gateway。
      */
     void *user_data;
-} IotIdeRuntimeOptions;
+} LibIotIdeOptions;
 
 /*
  * 查询当前 C API 版本。
@@ -137,9 +137,9 @@ int libiot_ide_get_api_version(void);
  * 初始化 IDE 连接管理、部署管理、启动管理等内部模块，并保存回调配置。
  *
  * 成功后：
- * *runtime 会得到一个 IotIdeRuntime 句柄，后续业务接口都要传入该句柄。
+ * *ide 会得到一个 LibIotIde 句柄，后续业务接口都要传入该句柄。
  */
-int libiot_ide_create(const IotIdeRuntimeOptions *options, IotIdeRuntime **runtime);
+int libiot_ide_create(const LibIotIdeOptions *options, LibIotIde **ide);
 
 /*
  * 销毁 IDE 业务运行对象。
@@ -150,7 +150,7 @@ int libiot_ide_create(const IotIdeRuntimeOptions *options, IotIdeRuntime **runti
  * 作用：
  * 释放 libiot_ide_create() 创建的对象和内部资源。
  */
-void libiot_ide_destroy(IotIdeRuntime *runtime);
+void libiot_ide_destroy(LibIotIde *ide);
 
 /*
  * 处理 IDE 连接请求。
@@ -171,7 +171,7 @@ void libiot_ide_destroy(IotIdeRuntime *runtime);
  *
  * response_json 返回处理结果 JSON。
  */
-int libiot_ide_request_connect(IotIdeRuntime *runtime, const char *params_json, char *response_json, size_t response_size);
+int libiot_ide_request_connect(LibIotIde *ide, const char *params_json, char *response_json, size_t response_size);
 
 /*
  * 处理 IDE 断开请求。
@@ -185,7 +185,7 @@ int libiot_ide_request_connect(IotIdeRuntime *runtime, const char *params_json, 
  * 作用：
  * 校验 clientId，如果是当前 active IDE，则释放 IDE 连接锁并上报连接状态。
  */
-int libiot_ide_request_disconnect(IotIdeRuntime *runtime, const char *params_json, char *response_json, size_t response_size);
+int libiot_ide_request_disconnect(LibIotIde *ide, const char *params_json, char *response_json, size_t response_size);
 
 /*
  * 处理 IDE 业务心跳。
@@ -202,7 +202,7 @@ int libiot_ide_request_disconnect(IotIdeRuntime *runtime, const char *params_jso
  * 注意：
  * 这是 IDE 业务心跳，不是 MQTT 协议层 heartbeat response。
  */
-int libiot_ide_heartbeat(IotIdeRuntime *runtime, const char *params_json, char *response_json, size_t response_size);
+int libiot_ide_heartbeat(LibIotIde *ide, const char *params_json, char *response_json, size_t response_size);
 
 /*
  * 处理项目部署请求。
@@ -225,7 +225,7 @@ int libiot_ide_heartbeat(IotIdeRuntime *runtime, const char *params_json, char *
  *
  * 部署状态会通过 on_event 产生 property.post/deployProject.response 事件。
  */
-int libiot_ide_deploy_project(IotIdeRuntime *runtime, const char *params_json, char *response_json, size_t response_size);
+int libiot_ide_deploy_project(LibIotIde *ide, const char *params_json, char *response_json, size_t response_size);
 
 /*
  * 处理项目启动请求。
@@ -247,7 +247,7 @@ int libiot_ide_deploy_project(IotIdeRuntime *runtime, const char *params_json, c
  *
  * 启动结果会通过 response_json 和 on_event 返回。
  */
-int libiot_ide_start_project(IotIdeRuntime *runtime, const char *params_json, char *response_json, size_t response_size);
+int libiot_ide_start_project(LibIotIde *ide, const char *params_json, char *response_json, size_t response_size);
 
 /*
  * 查询当前 IDE 连接快照。
@@ -260,7 +260,7 @@ int libiot_ide_start_project(IotIdeRuntime *runtime, const char *params_json, ch
  *
  * 常用于阿里云 property/get 或本地调试。
  */
-int libiot_ide_get_connection_snapshot(IotIdeRuntime *runtime, char *snapshot_json, size_t snapshot_size);
+int libiot_ide_get_connection_snapshot(LibIotIde *ide, char *snapshot_json, size_t snapshot_size);
 
 #ifdef __cplusplus
 }

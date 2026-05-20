@@ -11,7 +11,7 @@
 typedef struct IecRuntime {
     volatile sig_atomic_t running;
     IotIdeGateway *gateway;
-    IotIdeRuntime *iot_ide;
+    LibIotIde *iot_ide;
 } IecRuntime;
 
 static IecRuntime *g_runtime = NULL;
@@ -211,7 +211,7 @@ static void runtime_on_service(void *user_data,
                                const char *params_json) {
     IecRuntime *runtime = (IecRuntime *)user_data;
     char response[8192] = "{\"success\":0,\"message\":\"not handled\"}";
-    int rc = IOT_IDE_RUNTIME_ERR_INVALID_ARGUMENT;
+    int rc = LIBIOT_IDE_ERR_INVALID_ARGUMENT;
 
     if (runtime == NULL || runtime->iot_ide == NULL || gateway == NULL || service_name == NULL) {
         return;
@@ -243,7 +243,7 @@ static void runtime_on_service(void *user_data,
     } else if (strcmp(service_name, "property/set") == 0) {
         (void)iot_ide_gateway_post_properties(gateway, params_json == NULL ? "{}" : params_json);
         snprintf(response, sizeof(response), "{\"success\":1,\"message\":\"property set accepted\"}");
-        rc = IOT_IDE_RUNTIME_OK;
+        rc = LIBIOT_IDE_OK;
     } else {
         runtime_reply_error(gateway, service_name, request_id, "unknown service");
         return;
@@ -271,8 +271,8 @@ int main(int argc, char **argv) {
     IecRuntime runtime;
     IotIdeGatewayCallbacks gateway_callbacks;
     IotIdeGatewayOptions gateway_options;
-    IotIdeRuntimeCallbacks iot_ide_callbacks;
-    IotIdeRuntimeOptions iot_ide_options;
+    LibIotIdeCallbacks iot_ide_callbacks;
+    LibIotIdeOptions iot_ide_options;
     char product_key[128] = "";
     char device_name[128] = "";
     char mqtt_host[256] = "";
@@ -329,7 +329,7 @@ int main(int argc, char **argv) {
     iot_ide_options.callbacks = &iot_ide_callbacks;
     iot_ide_options.user_data = &runtime;
 
-    if (libiot_ide_create(&iot_ide_options, &runtime.iot_ide) != IOT_IDE_RUNTIME_OK) {
+    if (libiot_ide_create(&iot_ide_options, &runtime.iot_ide) != LIBIOT_IDE_OK) {
         runtime_log_stderr("libiot_ide_create failed\n");
         iot_ide_gateway_destroy(runtime.gateway);
         return 1;
