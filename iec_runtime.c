@@ -229,17 +229,17 @@ static void runtime_on_service(void *user_data,
      * property/set      -> 当前示例直接转成属性上报
      */
     if (strcmp(service_name, "requestConnect") == 0) {
-        rc = iot_ide_runtime_request_connect(runtime->iot_ide, params_json, response, sizeof(response));
+        rc = libiot_ide_request_connect(runtime->iot_ide, params_json, response, sizeof(response));
     } else if (strcmp(service_name, "requestDisconnect") == 0) {
-        rc = iot_ide_runtime_request_disconnect(runtime->iot_ide, params_json, response, sizeof(response));
+        rc = libiot_ide_request_disconnect(runtime->iot_ide, params_json, response, sizeof(response));
     } else if (strcmp(service_name, "ideHeartbeat") == 0) {
-        rc = iot_ide_runtime_heartbeat(runtime->iot_ide, params_json, response, sizeof(response));
+        rc = libiot_ide_heartbeat(runtime->iot_ide, params_json, response, sizeof(response));
     } else if (strcmp(service_name, "deployProject") == 0) {
-        rc = iot_ide_runtime_deploy_project(runtime->iot_ide, params_json, response, sizeof(response));
+        rc = libiot_ide_deploy_project(runtime->iot_ide, params_json, response, sizeof(response));
     } else if (strcmp(service_name, "startProject") == 0) {
-        rc = iot_ide_runtime_start_project(runtime->iot_ide, params_json, response, sizeof(response));
+        rc = libiot_ide_start_project(runtime->iot_ide, params_json, response, sizeof(response));
     } else if (strcmp(service_name, "property/get") == 0) {
-        rc = iot_ide_runtime_get_connection_snapshot(runtime->iot_ide, response, sizeof(response));
+        rc = libiot_ide_get_connection_snapshot(runtime->iot_ide, response, sizeof(response));
     } else if (strcmp(service_name, "property/set") == 0) {
         (void)iot_ide_gateway_post_properties(gateway, params_json == NULL ? "{}" : params_json);
         snprintf(response, sizeof(response), "{\"success\":1,\"message\":\"property set accepted\"}");
@@ -329,8 +329,8 @@ int main(int argc, char **argv) {
     iot_ide_options.callbacks = &iot_ide_callbacks;
     iot_ide_options.user_data = &runtime;
 
-    if (iot_ide_runtime_create(&iot_ide_options, &runtime.iot_ide) != IOT_IDE_RUNTIME_OK) {
-        runtime_log_stderr("iot_ide_runtime_create failed\n");
+    if (libiot_ide_create(&iot_ide_options, &runtime.iot_ide) != IOT_IDE_RUNTIME_OK) {
+        runtime_log_stderr("libiot_ide_create failed\n");
         iot_ide_gateway_destroy(runtime.gateway);
         return 1;
     }
@@ -357,7 +357,7 @@ int main(int argc, char **argv) {
      */
     if (iot_ide_gateway_start(runtime.gateway) != IOT_IDE_GATEWAY_OK) {
         runtime_log_stderr("iot_ide_gateway_start failed\n");
-        iot_ide_runtime_destroy(runtime.iot_ide);
+        libiot_ide_destroy(runtime.iot_ide);
         iot_ide_gateway_destroy(runtime.gateway);
         return 1;
     }
@@ -372,7 +372,7 @@ int main(int argc, char **argv) {
      * 退出时先停止阿里云连接，再销毁业务动态库和 gateway 动态库对象。
      */
     iot_ide_gateway_stop(runtime.gateway);
-    iot_ide_runtime_destroy(runtime.iot_ide);
+    libiot_ide_destroy(runtime.iot_ide);
     iot_ide_gateway_destroy(runtime.gateway);
     runtime_log_stdout("iec_runtime exit\n");
     return 0;

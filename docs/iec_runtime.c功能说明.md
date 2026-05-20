@@ -10,7 +10,7 @@
 
 ```c
 iot_ide_gateway_create(...)
-iot_ide_runtime_create(...)
+libiot_ide_create(...)
 ```
 
 对应：
@@ -62,12 +62,12 @@ startProject
 `runtime_on_service(...)` 里面根据服务名调用动态库业务 API：
 
 ```c
-requestConnect    -> iot_ide_runtime_request_connect(...)
-requestDisconnect -> iot_ide_runtime_request_disconnect(...)
-ideHeartbeat      -> iot_ide_runtime_heartbeat(...)
-deployProject     -> iot_ide_runtime_deploy_project(...)
-startProject      -> iot_ide_runtime_start_project(...)
-property/get      -> iot_ide_runtime_get_connection_snapshot(...)
+requestConnect    -> libiot_ide_request_connect(...)
+requestDisconnect -> libiot_ide_request_disconnect(...)
+ideHeartbeat      -> libiot_ide_heartbeat(...)
+deployProject     -> libiot_ide_deploy_project(...)
+startProject      -> libiot_ide_start_project(...)
+property/get      -> libiot_ide_get_connection_snapshot(...)
 ```
 
 也就是说，`iec_runtime.c` 决定“阿里云哪个服务，对应调用业务动态库哪个函数”。
@@ -155,7 +155,7 @@ iot_ide_gateway_start(...)
 
 ```c
 iot_ide_gateway_stop(...)
-iot_ide_runtime_destroy(...)
+libiot_ide_destroy(...)
 iot_ide_gateway_destroy(...)
 ```
 

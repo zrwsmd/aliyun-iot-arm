@@ -72,11 +72,11 @@ static int runtime_check_active_client(IotIdeRuntime *runtime, const char *param
     return IOT_IDE_RUNTIME_ERR_NOT_ACTIVE_CLIENT;
 }
 
-int iot_ide_runtime_get_api_version(void) {
+int libiot_ide_get_api_version(void) {
     return IOT_IDE_RUNTIME_API_VERSION;
 }
 
-int iot_ide_runtime_create(const IotIdeRuntimeOptions *options, IotIdeRuntime **runtime) {
+int libiot_ide_create(const IotIdeRuntimeOptions *options, IotIdeRuntime **runtime) {
     IotIdeRuntime *created;
 
     if (runtime == NULL) {
@@ -105,13 +105,13 @@ int iot_ide_runtime_create(const IotIdeRuntimeOptions *options, IotIdeRuntime **
     created->ide_initialized = 1;
 
     if (deploy_manager_init(&created->app.deploy_manager, &created->app) != 0) {
-        iot_ide_runtime_destroy(created);
+        libiot_ide_destroy(created);
         return IOT_IDE_RUNTIME_ERR_INTERNAL;
     }
     created->deploy_initialized = 1;
 
     if (start_manager_init(&created->app.start_manager, &created->app) != 0) {
-        iot_ide_runtime_destroy(created);
+        libiot_ide_destroy(created);
         return IOT_IDE_RUNTIME_ERR_INTERNAL;
     }
     created->start_initialized = 1;
@@ -123,7 +123,7 @@ int iot_ide_runtime_create(const IotIdeRuntimeOptions *options, IotIdeRuntime **
     return IOT_IDE_RUNTIME_OK;
 }
 
-void iot_ide_runtime_destroy(IotIdeRuntime *runtime) {
+void libiot_ide_destroy(IotIdeRuntime *runtime) {
     if (runtime == NULL) {
         return;
     }
@@ -144,7 +144,7 @@ void iot_ide_runtime_destroy(IotIdeRuntime *runtime) {
     free(runtime);
 }
 
-int iot_ide_runtime_request_connect(IotIdeRuntime *runtime, const char *params_json, char *response_json, size_t response_size) {
+int libiot_ide_request_connect(IotIdeRuntime *runtime, const char *params_json, char *response_json, size_t response_size) {
     int rc;
 
     if (runtime == NULL || params_json == NULL) {
@@ -156,7 +156,7 @@ int iot_ide_runtime_request_connect(IotIdeRuntime *runtime, const char *params_j
     return rc == 0 ? IOT_IDE_RUNTIME_OK : IOT_IDE_RUNTIME_ERR_INTERNAL;
 }
 
-int iot_ide_runtime_request_disconnect(IotIdeRuntime *runtime, const char *params_json, char *response_json, size_t response_size) {
+int libiot_ide_request_disconnect(IotIdeRuntime *runtime, const char *params_json, char *response_json, size_t response_size) {
     int rc;
 
     if (runtime == NULL || params_json == NULL) {
@@ -168,7 +168,7 @@ int iot_ide_runtime_request_disconnect(IotIdeRuntime *runtime, const char *param
     return rc == 0 ? IOT_IDE_RUNTIME_OK : IOT_IDE_RUNTIME_ERR_INTERNAL;
 }
 
-int iot_ide_runtime_heartbeat(IotIdeRuntime *runtime, const char *params_json, char *response_json, size_t response_size) {
+int libiot_ide_heartbeat(IotIdeRuntime *runtime, const char *params_json, char *response_json, size_t response_size) {
     int rc;
 
     if (runtime == NULL || params_json == NULL) {
@@ -180,7 +180,7 @@ int iot_ide_runtime_heartbeat(IotIdeRuntime *runtime, const char *params_json, c
     return rc == 0 ? IOT_IDE_RUNTIME_OK : IOT_IDE_RUNTIME_ERR_INTERNAL;
 }
 
-int iot_ide_runtime_deploy_project(IotIdeRuntime *runtime, const char *params_json, char *response_json, size_t response_size) {
+int libiot_ide_deploy_project(IotIdeRuntime *runtime, const char *params_json, char *response_json, size_t response_size) {
     int rc;
 
     rc = runtime_check_active_client(runtime, params_json, response_json, response_size, "deploy");
@@ -193,7 +193,7 @@ int iot_ide_runtime_deploy_project(IotIdeRuntime *runtime, const char *params_js
     return rc == 0 ? IOT_IDE_RUNTIME_OK : IOT_IDE_RUNTIME_ERR_INTERNAL;
 }
 
-int iot_ide_runtime_start_project(IotIdeRuntime *runtime, const char *params_json, char *response_json, size_t response_size) {
+int libiot_ide_start_project(IotIdeRuntime *runtime, const char *params_json, char *response_json, size_t response_size) {
     int rc;
 
     rc = runtime_check_active_client(runtime, params_json, response_json, response_size, "start");
@@ -206,7 +206,7 @@ int iot_ide_runtime_start_project(IotIdeRuntime *runtime, const char *params_jso
     return rc == 0 ? IOT_IDE_RUNTIME_OK : IOT_IDE_RUNTIME_ERR_INTERNAL;
 }
 
-int iot_ide_runtime_get_connection_snapshot(IotIdeRuntime *runtime, char *snapshot_json, size_t snapshot_size) {
+int libiot_ide_get_connection_snapshot(IotIdeRuntime *runtime, char *snapshot_json, size_t snapshot_size) {
     int connected = 0;
     char client_id[128] = "";
     char escaped_client_id[256] = "";

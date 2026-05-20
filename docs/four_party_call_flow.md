@@ -38,7 +38,7 @@ libiot_ide_gateway.so
   -> 解析 serviceName=requestConnect、requestId、params
   -> 回调 iec_runtime
 iec_runtime
-  -> 调 iot_ide_runtime_request_connect(...)
+  -> 调 libiot_ide_request_connect(...)
 libiot_ide.so
   -> 判断连接锁，接受或拒绝
   -> callback: property.post
@@ -62,7 +62,7 @@ libiot_ide_gateway.so
   -> 解析 serviceName=ideHeartbeat、requestId、params
   -> 回调 iec_runtime
 iec_runtime
-  -> 调 iot_ide_runtime_heartbeat(...)
+  -> 调 libiot_ide_heartbeat(...)
 libiot_ide.so
   -> 校验 clientId 是否是当前连接 IDE
   -> 更新 IDEHeartbeat
@@ -86,7 +86,7 @@ libiot_ide_gateway.so
 libiot_ide_gateway.so
   -> 解析服务并回调 iec_runtime
 iec_runtime
-  -> 调 iot_ide_runtime_request_disconnect(...)
+  -> 调 libiot_ide_request_disconnect(...)
 libiot_ide.so
   -> 校验 clientId
   -> 清空连接状态
@@ -108,7 +108,7 @@ libiot_ide_gateway.so
 libiot_ide_gateway.so
   -> 解析服务并回调 iec_runtime
 iec_runtime
-  -> 调 iot_ide_runtime_deploy_project(...)
+  -> 调 libiot_ide_deploy_project(...)
 libiot_ide.so
   -> 校验 clientId 是否是当前 IDE
   -> 异步下载、解压、执行部署命令
@@ -130,7 +130,7 @@ libiot_ide_gateway.so
 libiot_ide_gateway.so
   -> 解析服务并回调 iec_runtime
 iec_runtime
-  -> 调 iot_ide_runtime_start_project(...)
+  -> 调 libiot_ide_start_project(...)
 libiot_ide.so
   -> 校验 clientId 是否是当前 IDE
   -> 进入 {deployPath}/{projectName}
