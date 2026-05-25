@@ -1,16 +1,14 @@
 {
-  "productKey": "yourProductKey",
-  "deviceName": "yourDeviceName",
-  "productSecret": "",
-  "deviceSecret": "yourDeviceSecret",
-  "instanceId": "yourInstanceId",
+  "productKey": "k0u6s8Wj9WW",
+  "deviceName": "taiyuan-pc-001",
+  "productSecret":"",
+  "deviceSecret": "10fb3a42d39b926f93f199d5f3f9a6cf",
+  "instanceId": "iot-06z00d8xy9ns00z",
   "region": "cn-shanghai",
   "subDevice": [
     {
-      "productKey": "yourSubProductKey",
-      "deviceName": "yourSubDeviceName",
-      "deviceSecret": "yourSubDeviceSecret",
-      "signMethod": "hmacsha256"
+      "productKey": "",
+      "deviceName": ""
     },
     {
       "productKey": "",
